@@ -9,6 +9,8 @@ from autogen_agentchat.ui import Console
 
 from .llm import get_model_client
 from .agents import create_agents, create_planner_only
+from .config import config
+from .retriever_launcher import auto_retriever
 
 
 async def run(question: str):
@@ -50,7 +52,7 @@ async def run(question: str):
         f"Retriever: run each query above using search_documents."
     )
 
-    termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(20)
+    termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(config.max_messages)
 
     def selector(messages: Sequence[BaseAgentEvent | BaseChatMessage]) -> str | None:
         if len(messages) <= 1:
@@ -83,7 +85,8 @@ def main():
         sys.exit(1)
 
     question = " ".join(sys.argv[1:])
-    asyncio.run(run(question))
+    with auto_retriever():
+        asyncio.run(run(question))
 
 
 if __name__ == "__main__":

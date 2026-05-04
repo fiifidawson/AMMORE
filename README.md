@@ -23,41 +23,56 @@ The user validates the sub-queries before the loop starts, useful for catching w
 ```bash
 cd AMMORE
 pip install -r requirements.txt
-# edit .env with your API key
+cp .env.example .env   # then add your Mistral API key
 ```
 
-**.env:**
+**.env** — only the API key:
 ```
-PROVIDER=mistral
 MISTRAL_API_KEY=your-key-here
 ```
 
-Or to run locally with Ollama:
-```
-PROVIDER=ollama
-OLLAMA_MODEL=llama3.2:3b
+**config.yaml** — everything else (provider, models, URLs, retrieval and loop settings):
+```yaml
+provider: mistral   # or ollama
+
+mistral:
+  model: mistral-small-latest
+  base_url: https://api.mistral.ai/v1
+
+ollama:
+  model: llama3.2:3b
+  base_url: http://localhost:11434
+
+mmore:
+  retriever_url: http://127.0.0.1:8001/v1/retrieve
+
+retrieval:
+  max_matches: 10
+  min_similarity: -1
+
+loop:
+  max_messages: 20
 ```
 
 ## Usage
 
-Start the mmore retriever first (from the mmore root):
-```bash
-python -m mmore retrieve --config-file examples/retriever_api/config.yaml --host 127.0.0.1 --port 8001
-```
-
-Then run AMMORE :
 ```bash
 python -m ammore "What are the main evaluation methods for multimodal LLMs?"
 ```
+
+AMMORE auto-launches the mmore retriever as a subprocess if it's not already running (configured via `mmore.auto_launch` in config.yaml). To launch it manually instead, set `auto_launch: false` and run `python -m mmore retrieve --config-file examples/retriever_api/config.yaml --host 127.0.0.1 --port 8001` in another terminal.
 
 ## Project structure
 
 ```
 ammore/
-  main.py          # entry point — plan, validate, run
-  agents.py        # the 4 agents + search tool
-  mmore_client.py  # calls mmore retriever API
-  llm.py           # Mistral or Ollama client
+  main.py               # entry point — plan, validate, run
+  agents.py             # the 4 agents + search tool
+  mmore_client.py       # calls mmore retriever API
+  llm.py                # Mistral or Ollama client
+  config.py             # loads config.yaml + Mistral key from .env
+  retriever_launcher.py # auto-launches the mmore retriever subprocess
+config.yaml             # provider, models, URLs, retrieval/loop settings
 ```
 
 ## Design notes
