@@ -1,0 +1,20 @@
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N"]
+fixable = ["ALL"]
+ignore = ["E501", "E402"]   # line length, module-level imports not at top
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.pyright]
+include = ["ammore", "evaluate.py"]
+exclude = ["**/__pycache__", ".venv"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+# AutoGen's BaseAgentEvent/BaseChatMessage don't declare .content but expose it at runtime.
+reportAttributeAccessIssue = "none"

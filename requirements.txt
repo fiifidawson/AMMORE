@@ -3,3 +3,7 @@ autogen-ext[openai,ollama]
 python-dotenv
 pyyaml
 requests
+
+# dev tooling (optional)
+# install with: pip install pre-commit ruff pyright
+

@@ -1,11 +1,16 @@
 import requests
+
 from .config import config
 
 
-def retrieve(query: str, max_matches: int | None = None, min_similarity: float | None = None) -> str:
+def retrieve(
+    query: str, max_matches: int | None = None, min_similarity: float | None = None
+) -> str:
     """Call mmore retriever API and return formatted chunks."""
     max_matches = max_matches if max_matches is not None else config.max_matches
-    min_similarity = min_similarity if min_similarity is not None else config.min_similarity
+    min_similarity = (
+        min_similarity if min_similarity is not None else config.min_similarity
+    )
 
     try:
         response = requests.post(

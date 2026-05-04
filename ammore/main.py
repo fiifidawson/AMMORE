@@ -2,22 +2,22 @@ import asyncio
 import sys
 from typing import Sequence
 
-from autogen_agentchat.teams import SelectorGroupChat
-from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
+from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
 from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage
+from autogen_agentchat.teams import SelectorGroupChat
 from autogen_agentchat.ui import Console
 
-from .llm import get_model_client
 from .agents import create_agents, create_planner_only
 from .config import config
+from .llm import get_model_client
 from .retriever_launcher import auto_retriever
 
 
 async def run(question: str):
-    print(f"\n{'='*60}")
-    print(f"AMMORE -- Agentic Literature Review")
+    print(f"\n{'=' * 60}")
+    print("AMMORE -- Agentic Literature Review")
     print(f"Question: {question}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     model_client = get_model_client()
 
@@ -29,9 +29,9 @@ async def run(question: str):
     print(sub_questions_text)
 
     # step 2: let the user review and optionally edit the sub-questions
-    print("\n" + "-"*60)
+    print("\n" + "-" * 60)
     print("Press ENTER to approve, or type your own sub-questions:")
-    print("-"*60)
+    print("-" * 60)
     user_input = input("> ").strip()
 
     if user_input:
@@ -52,7 +52,9 @@ async def run(question: str):
         f"Retriever: run each query above using search_documents."
     )
 
-    termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(config.max_messages)
+    termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(
+        config.max_messages
+    )
 
     def selector(messages: Sequence[BaseAgentEvent | BaseChatMessage]) -> str | None:
         if len(messages) <= 1:
@@ -60,7 +62,11 @@ async def run(question: str):
 
         last = messages[-1]
         sender = getattr(last, "source", None)
-        text = last.content if hasattr(last, "content") and isinstance(last.content, str) else ""
+        text = (
+            last.content
+            if hasattr(last, "content") and isinstance(last.content, str)
+            else ""
+        )
 
         if sender == "Retriever":
             return "Critic"
@@ -81,7 +87,7 @@ async def run(question: str):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python -m ammore \"your question here\"")
+        print('Usage: python -m ammore "your question here"')
         sys.exit(1)
 
     question = " ".join(sys.argv[1:])

@@ -1,8 +1,8 @@
 """Loads config.yaml once and exposes it as a single object."""
 
 import os
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
