@@ -1,0 +1,29 @@
+# AMMORE configuration
+# API keys stay in .env (sensitive). Everything else lives here.
+
+provider: mistral   # mistral | ollama
+
+mistral:
+  model: mistral-small-latest
+  base_url: https://api.mistral.ai/v1
+
+ollama:
+  model: llama3.2:3b
+  base_url: http://localhost:11434
+
+mmore:
+  retriever_url: http://127.0.0.1:8001/v1/retrieve
+  # Auto-launch the mmore retriever as a subprocess if it's not already running.
+  # Set to false if you prefer to start it manually.
+  auto_launch: true
+  retriever_config_file: ../examples/retriever_api/config.yaml
+  host: 127.0.0.1
+  port: 8001
+  startup_timeout: 30   # seconds to wait for the retriever to become ready
+
+retrieval:
+  max_matches: 10        # chunks per query
+  min_similarity: -1     # -1 disables the filter
+
+loop:
+  max_messages: 20       # hard cap for the multi-agent loop

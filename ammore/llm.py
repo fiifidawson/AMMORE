@@ -1,25 +1,14 @@
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from .config import config, get_api_key
 
 
 def get_model_client():
-    provider = os.getenv("PROVIDER", "mistral").lower()
-
-    if provider == "mistral":
+    if config.provider == "mistral":
         from autogen_ext.models.openai import OpenAIChatCompletionClient
 
-        api_key = os.getenv("MISTRAL_API_KEY")
-        if not api_key:
-            raise ValueError("MISTRAL_API_KEY not set in .env")
-
-        model = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
-
         return OpenAIChatCompletionClient(
-            model=model,
-            api_key=api_key,
-            base_url="https://api.mistral.ai/v1",
+            model=config.mistral_model,
+            api_key=get_api_key(),
+            base_url=config.mistral_base_url,
             model_info={
                 "vision": False,
                 "function_calling": True,
@@ -29,13 +18,15 @@ def get_model_client():
             },
         )
 
-    elif provider == "ollama":
+    elif config.provider == "ollama":
         from autogen_ext.models.ollama import OllamaChatCompletionClient
 
-        model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
-        host = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-
-        return OllamaChatCompletionClient(model=model, host=host)
+        return OllamaChatCompletionClient(
+            model=config.ollama_model,
+            host=config.ollama_base_url,
+        )
 
     else:
-        raise ValueError(f"Unknown PROVIDER '{provider}'. Use 'mistral' or 'ollama'.")
+        raise ValueError(
+            f"Unknown provider '{config.provider}' in config.yaml. Use 'mistral' or 'ollama'."
+        )

@@ -1,17 +1,15 @@
-import os
 import requests
-from dotenv import load_dotenv
-
-load_dotenv()
-
-MMORE_URL = os.getenv("MMORE_RETRIEVER_URL", "http://127.0.0.1:8001/v1/retrieve")
+from .config import config
 
 
-def retrieve(query: str, max_matches: int = 10, min_similarity: float = -1) -> str:
+def retrieve(query: str, max_matches: int | None = None, min_similarity: float | None = None) -> str:
     """Call mmore retriever API and return formatted chunks."""
+    max_matches = max_matches if max_matches is not None else config.max_matches
+    min_similarity = min_similarity if min_similarity is not None else config.min_similarity
+
     try:
         response = requests.post(
-            MMORE_URL,
+            config.retriever_url,
             json={
                 "query": query,
                 "fileIds": [],

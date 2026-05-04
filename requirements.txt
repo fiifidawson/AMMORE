@@ -1,4 +1,5 @@
 autogen-agentchat>=0.7.0
 autogen-ext[openai,ollama]
 python-dotenv
+pyyaml
 requests
