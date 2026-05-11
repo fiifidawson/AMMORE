@@ -27,3 +27,9 @@ retrieval:
 
 loop:
   max_messages: 20       # hard cap for the multi-agent loop
+  context_window: 6      # last N messages each agent sees (keeps tokens in check)
+
+websearch:
+  enabled: true      # set to true once TAVILY_API_KEY is set in .env
+  max_results: 5         # web results returned per query
+  search_depth: basic    # basic | advanced (advanced costs more credits)

@@ -67,13 +67,25 @@ AMMORE auto-launches the mmore retriever as a subprocess if it's not already run
 ```
 ammore/
   main.py               # entry point — plan, validate, run
-  agents.py             # the 4 agents + search tool
+  agents.py             # the 4 agents + search tools
   mmore_client.py       # calls mmore retriever API
+  web_search.py         # Tavily web search tool
   llm.py                # Mistral or Ollama client
-  config.py             # loads config.yaml + Mistral key from .env
+  config.py             # loads config.yaml + API keys from .env
   retriever_launcher.py # auto-launches the mmore retriever subprocess
-config.yaml             # provider, models, URLs, retrieval/loop settings
+config.yaml             # provider, models, URLs, retrieval/loop/websearch settings
 ```
+
+## Optional: web search
+
+The Retriever can use Tavily as a second tool for queries that go beyond the indexed corpus (e.g. recent papers, broader context). To enable it:
+
+1. Get a free key at https://tavily.com (free student tier covers 1k queries/month)
+2. Add `TAVILY_API_KEY=...` to `.env`
+3. Set `websearch.enabled: true` in `config.yaml`
+4. `pip install tavily-python` (already in `requirements.txt`)
+
+When enabled, the Retriever's system message tells it to prefer the corpus and fall back to the web only when needed.
 
 ## Development
 

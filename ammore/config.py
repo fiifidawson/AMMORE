@@ -1,5 +1,3 @@
-"""Loads config.yaml once and exposes it as a single object."""
-
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,7 +5,8 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-load_dotenv()
+_AMMORE_ROOT = Path(__file__).parent.parent
+load_dotenv(_AMMORE_ROOT / ".env")
 
 
 @dataclass
@@ -26,6 +25,10 @@ class Config:
     max_matches: int
     min_similarity: float
     max_messages: int
+    context_window: int
+    websearch_enabled: bool
+    websearch_max_results: int
+    websearch_search_depth: str
 
     @classmethod
     def load(cls, path: str | Path = "config.yaml") -> "Config":
@@ -34,7 +37,6 @@ class Config:
 
         mmore_cfg = data["mmore"]
 
-        # Resolve retriever config path relative to AMMORE root if relative
         retriever_cfg = mmore_cfg.get("retriever_config_file", "")
         if retriever_cfg and not os.path.isabs(retriever_cfg):
             retriever_cfg = str((Path(path).parent / retriever_cfg).resolve())
@@ -54,17 +56,27 @@ class Config:
             max_matches=data["retrieval"]["max_matches"],
             min_similarity=data["retrieval"]["min_similarity"],
             max_messages=data["loop"]["max_messages"],
+            context_window=data["loop"].get("context_window", 6),
+            websearch_enabled=data.get("websearch", {}).get("enabled", False),
+            websearch_max_results=data.get("websearch", {}).get("max_results", 5),
+            websearch_search_depth=data.get("websearch", {}).get(
+                "search_depth", "basic"
+            ),
         )
 
 
-# Resolve path relative to AMMORE root (one level up from this file)
-_CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
-config = Config.load(_CONFIG_PATH)
+config = Config.load(_AMMORE_ROOT / "config.yaml")
 
 
 def get_api_key() -> str:
-    """Mistral API key — still loaded from .env for security."""
     key = os.getenv("MISTRAL_API_KEY")
     if not key:
         raise ValueError("MISTRAL_API_KEY not set in .env")
+    return key
+
+
+def get_tavily_key() -> str:
+    key = os.getenv("TAVILY_API_KEY")
+    if not key:
+        raise ValueError("TAVILY_API_KEY not set in .env")
     return key
