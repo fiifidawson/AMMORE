@@ -1,5 +1,5 @@
+import argparse
 import asyncio
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Sequence
@@ -10,6 +10,7 @@ from autogen_agentchat.teams import SelectorGroupChat
 
 from .agents import create_agents, create_planner
 from .config import config
+from .corpus import prepare_corpus
 from .llm import get_model_client
 from .retriever_launcher import auto_retriever
 
@@ -126,13 +127,22 @@ def save_output(question, messages):
 
 
 def main():
-    if len(sys.argv) < 2:
-        print('Usage: python -m ammore "your question here"')
-        sys.exit(1)
+    parser = argparse.ArgumentParser(prog="ammore")
+    parser.add_argument("question", help="research question to investigate")
+    parser.add_argument(
+        "--corpus",
+        type=Path,
+        default=None,
+        help="folder of documents to index and search. If omitted, uses the corpus already configured in config.yaml.",
+    )
+    args = parser.parse_args()
 
-    question = " ".join(sys.argv[1:])
-    with auto_retriever():
-        asyncio.run(run(question))
+    retriever_cfg = None
+    if args.corpus is not None:
+        retriever_cfg = prepare_corpus(args.corpus)
+
+    with auto_retriever(retriever_cfg):
+        asyncio.run(run(args.question))
 
 
 if __name__ == "__main__":

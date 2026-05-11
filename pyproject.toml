@@ -1,3 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ammore"
+version = "0.1.0"
+description = "Agentic literature review on top of mmore."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "autogen-agentchat>=0.7.0",
+    "autogen-ext[openai,ollama]",
+    "mmore",
+    "python-dotenv",
+    "pyyaml",
+    "requests",
+    "tavily-python",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit",
+    "pyright",
+    "pytest",
+    "ruff",
+]
+
+[project.scripts]
+ammore = "ammore.main:main"
+
+[tool.setuptools.packages.find]
+include = ["ammore*"]
+
 [tool.ruff]
 target-version = "py311"
 

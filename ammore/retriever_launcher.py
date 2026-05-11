@@ -32,12 +32,13 @@ def _wait_until_ready(timeout: int) -> bool:
 
 
 @contextmanager
-def auto_retriever():
+def auto_retriever(config_file=None):
     """Context manager that ensures the retriever is up for the duration of the block.
 
     - If the retriever is already running, do nothing (yield immediately).
     - Otherwise, spawn `python -m mmore retrieve ...` and wait until ready.
     - On exit, terminate the subprocess we started (only if we started it).
+    - `config_file` overrides the retriever config from config.yaml.
     """
     if not config.auto_launch:
         yield None
@@ -48,13 +49,14 @@ def auto_retriever():
         yield None
         return
 
+    cfg = str(config_file) if config_file else config.retriever_config_file
     cmd = [
         sys.executable,
         "-m",
         "mmore",
         "retrieve",
         "--config-file",
-        config.retriever_config_file,
+        cfg,
         "--host",
         config.retriever_host,
         "--port",
