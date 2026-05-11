@@ -205,3 +205,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# AMMORE run artefacts
+outputs/
+eval_results.json

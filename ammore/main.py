@@ -1,13 +1,14 @@
 import asyncio
 import sys
+from datetime import datetime
+from pathlib import Path
 from typing import Sequence
 
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
 from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage
 from autogen_agentchat.teams import SelectorGroupChat
-from autogen_agentchat.ui import Console
 
-from .agents import create_agents, create_planner_only
+from .agents import create_agents, create_planner
 from .config import config
 from .llm import get_model_client
 from .retriever_launcher import auto_retriever
@@ -23,8 +24,8 @@ async def run(question: str):
 
     # step 1: planner generates sub-questions
     print("Generating search plan...\n")
-    planner_only = create_planner_only(model_client)
-    result = await planner_only.run(task=question)
+    planner = create_planner(model_client)
+    result = await planner.run(task=question)
     sub_questions_text = result.messages[-1].content
     print(sub_questions_text)
 
@@ -44,7 +45,7 @@ async def run(question: str):
     # step 3: run the retrieval loop
     print("\nStarting retrieval loop...\n")
 
-    planner, retriever, critic, writer = create_agents(model_client)
+    retriever, critic, writer = create_agents(model_client)
 
     task = (
         f"Original question: {question}\n\n"
@@ -71,7 +72,13 @@ async def run(question: str):
         if sender == "Retriever":
             return "Critic"
         if sender == "Critic":
-            return "Writer" if "COVERAGE_OK" in text else "Retriever"
+            # NEEDS_MORE wins if both verdicts somehow appear (Critic was unsure)
+            if "NEEDS_MORE" in text:
+                return "Retriever"
+            if "COVERAGE_OK" in text:
+                return "Writer"
+            # Verdict missing -- treat as NEEDS_MORE to be safe
+            return "Retriever"
 
         return None  # Writer just spoke, termination condition handles the rest
 
@@ -82,7 +89,40 @@ async def run(question: str):
         termination_condition=termination,
     )
 
-    await Console(team.run_stream(task=task))
+    collected = []
+
+    try:
+        async for msg in team.run_stream(task=task):
+            collected.append(msg)
+            src = getattr(msg, "source", "?")
+            content = getattr(msg, "content", "")
+            if isinstance(content, str) and content:
+                print(f"---------- {src} ----------\n{content}\n")
+    except Exception as e:
+        print(f"\nRun stopped early: {e}")
+
+    save_output(question, collected)
+
+
+def save_output(question, messages):
+    out_dir = Path("outputs")
+    out_dir.mkdir(exist_ok=True)
+
+    writer_text = ""
+    for m in reversed(messages):
+        if getattr(m, "source", None) == "Writer":
+            writer_text = m.content
+            break
+
+    if not writer_text:
+        print("\nNo writer output to save.")
+        return
+
+    name = datetime.now().strftime("review_%Y%m%d_%H%M%S.md")
+    path = out_dir / name
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"# {question}\n\n{writer_text}\n")
+    print(f"\nSaved to {path}")
 
 
 def main():
