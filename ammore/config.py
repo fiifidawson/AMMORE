@@ -1,4 +1,5 @@
 import os
+import platform
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7,6 +8,15 @@ from dotenv import load_dotenv
 
 _AMMORE_ROOT = Path(__file__).parent.parent
 load_dotenv(_AMMORE_ROOT / ".env")
+
+
+def _resolve_milvus_uri(value: str) -> str:
+    if value != "auto":
+        return value
+    # milvus-lite has no Windows wheel -> need a running Milvus server there
+    if platform.system() == "Windows":
+        return "http://127.0.0.1:19530"
+    return str((_AMMORE_ROOT / "milvus.db").resolve())
 
 
 @dataclass
@@ -22,8 +32,12 @@ class Config:
     retriever_host: str
     retriever_port: int
     startup_timeout: int
+    milvus_uri: str
+    milvus_db: str
     max_matches: int
     min_similarity: float
+    max_chunk_chars: int
+    max_total_chars: int
     max_messages: int
     context_window: int
     websearch_enabled: bool
@@ -53,8 +67,12 @@ class Config:
             retriever_host=mmore_cfg.get("host", "127.0.0.1"),
             retriever_port=mmore_cfg.get("port", 8001),
             startup_timeout=mmore_cfg.get("startup_timeout", 30),
+            milvus_uri=_resolve_milvus_uri(mmore_cfg.get("milvus_uri", "auto")),
+            milvus_db=mmore_cfg.get("milvus_db", "my_db"),
             max_matches=data["retrieval"]["max_matches"],
             min_similarity=data["retrieval"]["min_similarity"],
+            max_chunk_chars=data["retrieval"].get("max_chunk_chars", 2500),
+            max_total_chars=data["retrieval"].get("max_total_chars", 16000),
             max_messages=data["loop"]["max_messages"],
             context_window=data["loop"].get("context_window", 6),
             websearch_enabled=data.get("websearch", {}).get("enabled", False),

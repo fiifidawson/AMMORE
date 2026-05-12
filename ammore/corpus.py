@@ -17,7 +17,7 @@ def _collection_name(corpus: Path) -> str:
 
 def _already_indexed(collection_name: str) -> bool:
     try:
-        client = MilvusClient(uri="http://127.0.0.1:19530", db_name="my_db")
+        client = MilvusClient(uri=config.milvus_uri, db_name=config.milvus_db)
         collections = list(client.list_collections())  # type: ignore[call-overload]
         return collection_name in collections
     except Exception:
@@ -51,7 +51,7 @@ def _write_index_cfg(work_dir: Path, collection_name: str) -> Path:
                 "is_multimodal": False,
             },
             "sparse_model": {"model_name": "splade", "is_multimodal": False},
-            "db": {"uri": "http://127.0.0.1:19530", "name": "my_db"},
+            "db": {"uri": config.milvus_uri, "name": config.milvus_db},
         },
         "collection_name": collection_name,
         "documents_path": str(results_jsonl.resolve()),
@@ -64,7 +64,7 @@ def _write_index_cfg(work_dir: Path, collection_name: str) -> Path:
 
 def _write_retriever_cfg(work_dir: Path, collection_name: str) -> Path:
     cfg = {
-        "db": {"uri": "http://127.0.0.1:19530", "name": "my_db"},
+        "db": {"uri": config.milvus_uri, "name": config.milvus_db},
         "hybrid_search_weight": 0.5,
         "k": config.max_matches,
         "collection_name": collection_name,

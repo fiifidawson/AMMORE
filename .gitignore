@@ -209,3 +209,5 @@ __marimo__/
 # AMMORE run artefacts
 outputs/
 eval_results.json
+milvus.db
+*.db.lock

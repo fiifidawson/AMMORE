@@ -3,6 +3,15 @@ import requests
 from .config import config
 
 
+def _shorten(text: str, limit: int) -> str:
+    """Keep the head and tail of an over-long chunk with a marker in between."""
+    if limit <= 0 or len(text) <= limit:
+        return text
+    head = int(limit * 0.6)
+    tail = limit - head
+    return f"{text[:head]}\n[...truncated {len(text) - limit} chars...]\n{text[-tail:]}"
+
+
 def retrieve(
     query: str, max_matches: int | None = None, min_similarity: float | None = None
 ) -> str:
@@ -34,9 +43,15 @@ def retrieve(
         return "No results found."
 
     chunks = []
+    total = 0
     for i, r in enumerate(results, 1):
         file_id = r.get("fileId", "unknown")
-        content = r.get("content", "").strip()
-        chunks.append(f"[Chunk {i} | {file_id}]\n{content}")
+        content = _shorten(r.get("content", "").strip(), config.max_chunk_chars)
+        block = f"[Chunk {i} | {file_id}]\n{content}"
+        if config.max_total_chars and total + len(block) > config.max_total_chars:
+            chunks.append(f"[... {len(results) - i + 1} more chunk(s) omitted ...]")
+            break
+        chunks.append(block)
+        total += len(block)
 
     return "\n\n---\n\n".join(chunks)
