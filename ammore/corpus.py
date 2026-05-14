@@ -10,18 +10,39 @@ from pymilvus import MilvusClient
 from .config import config
 
 
-def _collection_name(corpus: Path) -> str:
+def _uses_local_milvus() -> bool:
+    return "://" not in config.milvus_uri
+
+
+def _corpus_slug(corpus: Path) -> str:
     name = re.sub(r"[^a-zA-Z0-9_]", "_", corpus.name).strip("_") or "ammore_corpus"
     return f"ammore_{name}"
 
 
+def _collection_name() -> str:
+    # The upstream mmore retrieval API invokes its Retriever with the default
+    # collection name ("my_docs"). Keeping AMMORE's auto-indexed corpus there
+    # lets us use the normal `python -m mmore retrieve` path unchanged.
+    return "my_docs"
+
+
 def _already_indexed(collection_name: str) -> bool:
+    # Opening a milvus-lite file starts a local server in this Python process.
+    # That keeps the DB locked, so the subprocess that runs `mmore index` cannot
+    # open it. Only use this optimization for remote Milvus servers.
+    if _uses_local_milvus():
+        return False
+
+    client = None
     try:
         client = MilvusClient(uri=config.milvus_uri, db_name=config.milvus_db)
         collections = list(client.list_collections())  # type: ignore[call-overload]
         return collection_name in collections
     except Exception:
         return False
+    finally:
+        if client is not None:
+            client.close()
 
 
 def _write_process_cfg(corpus: Path, work_dir: Path) -> Path:
@@ -43,7 +64,7 @@ def _write_process_cfg(corpus: Path, work_dir: Path) -> Path:
 
 
 def _write_index_cfg(work_dir: Path, collection_name: str) -> Path:
-    results_jsonl = work_dir / "process_out" / "merged" / "results.jsonl"
+    results_jsonl = work_dir / "postprocess_out" / "results.jsonl"
     cfg = {
         "indexer": {
             "dense_model": {
@@ -62,12 +83,38 @@ def _write_index_cfg(work_dir: Path, collection_name: str) -> Path:
     return path
 
 
+def _write_postprocess_cfg(work_dir: Path) -> Path:
+    cfg = {
+        "previous_results": None,
+        "pp_modules": [
+            {
+                "type": "chunker",
+                "args": {
+                    "chunking_strategy": "sentence",
+                    "table_handling": "single_row",
+                },
+            }
+        ],
+        "output": {
+            "output_path": str(
+                (work_dir / "postprocess_out" / "results.jsonl").resolve()
+            ),
+            "save_each_step": True,
+        },
+    }
+    path = work_dir / "postprocess.yaml"
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(cfg, f)
+    return path
+
+
 def _write_retriever_cfg(work_dir: Path, collection_name: str) -> Path:
     cfg = {
         "db": {"uri": config.milvus_uri, "name": config.milvus_db},
         "hybrid_search_weight": 0.5,
         "k": config.max_matches,
         "collection_name": collection_name,
+        "reranker_model_name": None,
     }
     path = work_dir / "retriever.yaml"
     with open(path, "w", encoding="utf-8") as f:
@@ -84,8 +131,8 @@ def prepare_corpus(corpus: Path) -> Path:
     if not corpus.exists() or not corpus.is_dir():
         raise FileNotFoundError(f"Corpus folder not found: {corpus}")
 
-    collection = _collection_name(corpus)
-    work_dir = Path(tempfile.gettempdir()) / "ammore" / collection
+    collection = _collection_name()
+    work_dir = Path(tempfile.gettempdir()) / "ammore" / _corpus_slug(corpus)
     work_dir.mkdir(parents=True, exist_ok=True)
 
     retriever_cfg = _write_retriever_cfg(work_dir, collection)
@@ -98,6 +145,22 @@ def prepare_corpus(corpus: Path) -> Path:
     process_cfg = _write_process_cfg(corpus, work_dir)
     subprocess.run(
         [sys.executable, "-m", "mmore", "process", "--config-file", str(process_cfg)],
+        check=True,
+    )
+
+    print("Chunking processed documents...")
+    postprocess_cfg = _write_postprocess_cfg(work_dir)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mmore",
+            "postprocess",
+            "--config-file",
+            str(postprocess_cfg),
+            "--input-data",
+            str(work_dir / "process_out" / "merged" / "merged_results.jsonl"),
+        ],
         check=True,
     )
 

@@ -19,7 +19,7 @@ mmore:
   retriever_config_file: ../examples/retriever_api/config.yaml
   host: 127.0.0.1
   port: 8001
-  startup_timeout: 30   # seconds to wait for the retriever to become ready
+  startup_timeout: 180  # seconds to wait for the retriever to become ready
   # Milvus backend used by the corpus auto-indexing (--corpus).
   # "auto"  -> Docker Milvus on Windows (milvus-lite has no Windows build),
   #            local milvus-lite file on Linux/macOS (no Docker needed)
@@ -28,18 +28,18 @@ mmore:
   milvus_db: my_db
 
 retrieval:
-  max_matches: 10        # chunks per query
+  max_matches: 3         # chunks per query
   min_similarity: -1     # -1 disables the filter
   # Safety net for corpora indexed with very large chunks. A chunk over
   # max_chunk_chars keeps its head and tail with a [...] marker in between;
   # once the combined output reaches max_total_chars, remaining chunks are
   # dropped. Set both to 0 to disable.
-  max_chunk_chars: 2500
-  max_total_chars: 16000
+  max_chunk_chars: 1200
+  max_total_chars: 5000
 
 loop:
-  max_messages: 20       # hard cap for the multi-agent loop
-  context_window: 6      # last N messages each agent sees (keeps tokens in check)
+  max_messages: 10       # hard cap for the multi-agent loop
+  context_window: 4      # last N messages each agent sees (keeps tokens in check)
 
 websearch:
   enabled: true      # set to true once TAVILY_API_KEY is set in .env
