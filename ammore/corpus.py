@@ -8,6 +8,7 @@ import yaml
 from pymilvus import MilvusClient
 
 from .config import config
+from .document_metadata import build_overview
 
 
 def _uses_local_milvus() -> bool:
@@ -19,11 +20,14 @@ def _corpus_slug(corpus: Path) -> str:
     return f"ammore_{name}"
 
 
-def _collection_name() -> str:
-    # The upstream mmore retrieval API invokes its Retriever with the default
-    # collection name ("my_docs"). Keeping AMMORE's auto-indexed corpus there
-    # lets us use the normal `python -m mmore retrieve` path unchanged.
-    return "my_docs"
+def _collection_name(corpus: Path) -> str:
+    # one collection per corpus so switching --corpus doesn't mix results
+    return _corpus_slug(corpus)
+
+
+def document_metadata_path(corpus: Path) -> Path:
+    work_dir = Path(tempfile.gettempdir()) / "ammore" / _corpus_slug(corpus)
+    return work_dir / "document_metadata.md"
 
 
 def _already_indexed(collection_name: str) -> bool:
@@ -131,14 +135,17 @@ def prepare_corpus(corpus: Path) -> Path:
     if not corpus.exists() or not corpus.is_dir():
         raise FileNotFoundError(f"Corpus folder not found: {corpus}")
 
-    collection = _collection_name()
+    collection = _collection_name(corpus)
     work_dir = Path(tempfile.gettempdir()) / "ammore" / _corpus_slug(corpus)
     work_dir.mkdir(parents=True, exist_ok=True)
 
     retriever_cfg = _write_retriever_cfg(work_dir, collection)
+    merged = work_dir / "process_out" / "merged" / "merged_results.jsonl"
 
     if _already_indexed(collection):
         print(f"Corpus already indexed as '{collection}', skipping processing.")
+        # still build the overview
+        build_overview(merged, work_dir)
         return retriever_cfg
 
     print(f"Processing corpus at {corpus}...")
@@ -147,6 +154,10 @@ def prepare_corpus(corpus: Path) -> Path:
         [sys.executable, "-m", "mmore", "process", "--config-file", str(process_cfg)],
         check=True,
     )
+
+    overview = build_overview(merged, work_dir)
+    if overview is not None:
+        print(f"Document overview written to {overview}")
 
     print("Chunking processed documents...")
     postprocess_cfg = _write_postprocess_cfg(work_dir)

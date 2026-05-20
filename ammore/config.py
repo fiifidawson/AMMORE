@@ -39,10 +39,13 @@ class Config:
     max_chunk_chars: int
     max_total_chars: int
     max_messages: int
-    context_window: int
+    context_head: int
+    context_tail: int
     websearch_enabled: bool
     websearch_max_results: int
     websearch_search_depth: str
+    metadata_mode: str
+    metadata_in_prompt: bool
 
     @classmethod
     def load(cls, path: str | Path = "config.yaml") -> "Config":
@@ -74,11 +77,16 @@ class Config:
             max_chunk_chars=data["retrieval"].get("max_chunk_chars", 2500),
             max_total_chars=data["retrieval"].get("max_total_chars", 16000),
             max_messages=data["loop"]["max_messages"],
-            context_window=data["loop"].get("context_window", 6),
+            context_head=data["loop"].get("context_head", 2),
+            context_tail=data["loop"].get("context_tail", 8),
             websearch_enabled=data.get("websearch", {}).get("enabled", False),
             websearch_max_results=data.get("websearch", {}).get("max_results", 5),
             websearch_search_depth=data.get("websearch", {}).get(
                 "search_depth", "basic"
+            ),
+            metadata_mode=data.get("document_metadata", {}).get("mode", "cheap"),
+            metadata_in_prompt=data.get("document_metadata", {}).get(
+                "include_in_prompt", True
             ),
         )
 
