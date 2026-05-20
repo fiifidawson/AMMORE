@@ -8,14 +8,25 @@ from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermi
 from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage
 from autogen_agentchat.teams import SelectorGroupChat
 
-from .agents import create_agents, create_planner
+from .agents import create_agents, create_planner, reset_search_state
 from .config import config
-from .corpus import prepare_corpus
+from .corpus import document_metadata_path, prepare_corpus
+from .document_metadata import load_title_map
 from .llm import get_model_client
+from .mmore_client import set_title_map
 from .retriever_launcher import auto_retriever
 
 
-async def run(question: str):
+def _corpus_overview(corpus: Path | None) -> str:
+    if corpus is None or not config.metadata_in_prompt:
+        return ""
+    path = document_metadata_path(corpus)
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8").strip()
+
+
+async def run(question: str, corpus: Path | None = None):
     print(f"\n{'=' * 60}")
     print("AMMORE -- Agentic Literature Review")
     print(f"Question: {question}")
@@ -23,10 +34,15 @@ async def run(question: str):
 
     model_client = get_model_client()
 
+    overview = _corpus_overview(corpus)
+
     # step 1: planner generates sub-questions
     print("Generating search plan...\n")
     planner = create_planner(model_client)
-    result = await planner.run(task=question)
+    planner_task = question
+    if overview:
+        planner_task = f"{question}\n\nThe corpus contains:\n{overview}"
+    result = await planner.run(task=planner_task)
     sub_questions_text = result.messages[-1].content
     print(sub_questions_text)
 
@@ -46,6 +62,7 @@ async def run(question: str):
     # step 3: run the retrieval loop
     print("\nStarting retrieval loop...\n")
 
+    reset_search_state()
     retriever, critic, writer = create_agents(model_client)
 
     task = (
@@ -70,18 +87,20 @@ async def run(question: str):
             else ""
         )
 
+        # force the Writer near the cap so we always get a synthesis
+        if len(messages) >= config.max_messages - 2 and sender != "Writer":
+            return "Writer"
+
         if sender == "Retriever":
             return "Critic"
         if sender == "Critic":
-            # NEEDS_MORE wins if both verdicts somehow appear (Critic was unsure)
             if "NEEDS_MORE" in text:
                 return "Retriever"
             if "COVERAGE_OK" in text:
                 return "Writer"
-            # Verdict missing -- treat as NEEDS_MORE to be safe
             return "Retriever"
 
-        return None  # Writer just spoke, termination condition handles the rest
+        return None
 
     team = SelectorGroupChat(
         participants=[retriever, critic, writer],
@@ -99,6 +118,14 @@ async def run(question: str):
             content = getattr(msg, "content", "")
             if isinstance(content, str) and content:
                 print(f"---------- {src} ----------\n{content}\n")
+            elif isinstance(content, list):
+                for item in content:
+                    name = getattr(item, "name", None)
+                    if name is not None:
+                        args = getattr(item, "arguments", "")
+                        print(
+                            f"---------- {src} (tool call) ----------\n{name}({args})\n"
+                        )
     except Exception as e:
         print(f"\nRun stopped early: {e}")
 
@@ -140,9 +167,10 @@ def main():
     retriever_cfg = None
     if args.corpus is not None:
         retriever_cfg = prepare_corpus(args.corpus)
+        set_title_map(load_title_map(document_metadata_path(args.corpus).parent))
 
     with auto_retriever(retriever_cfg):
-        asyncio.run(run(args.question))
+        asyncio.run(run(args.question, args.corpus))
 
 
 if __name__ == "__main__":

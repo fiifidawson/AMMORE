@@ -1,10 +1,26 @@
+from pathlib import Path
+
 import requests
 
 from .config import config
 
+_TITLE_MAP: dict = {}
+
+
+def set_title_map(mapping: dict) -> None:
+    global _TITLE_MAP
+    _TITLE_MAP = mapping or {}
+
+
+def _source_label(r: dict) -> str:
+    file_path = r.get("filePath")
+    if file_path:
+        name = Path(file_path).name
+        return _TITLE_MAP.get(name, name)
+    return r.get("fileId", "unknown")
+
 
 def _shorten(text: str, limit: int) -> str:
-    """Keep the head and tail of an over-long chunk with a marker in between."""
     if limit <= 0 or len(text) <= limit:
         return text
     head = int(limit * 0.6)
@@ -15,7 +31,6 @@ def _shorten(text: str, limit: int) -> str:
 def retrieve(
     query: str, max_matches: int | None = None, min_similarity: float | None = None
 ) -> str:
-    """Call mmore retriever API and return formatted chunks."""
     max_matches = max_matches if max_matches is not None else config.max_matches
     min_similarity = (
         min_similarity if min_similarity is not None else config.min_similarity
@@ -45,9 +60,9 @@ def retrieve(
     chunks = []
     total = 0
     for i, r in enumerate(results, 1):
-        file_id = r.get("fileId", "unknown")
+        label = _source_label(r)
         content = _shorten(r.get("content", "").strip(), config.max_chunk_chars)
-        block = f"[Chunk {i} | {file_id}]\n{content}"
+        block = f"[Chunk {i} | {label}]\n{content}"
         if config.max_total_chars and total + len(block) > config.max_total_chars:
             chunks.append(f"[... {len(results) - i + 1} more chunk(s) omitted ...]")
             break
