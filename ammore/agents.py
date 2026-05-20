@@ -1,40 +1,65 @@
 from typing import Any, Callable, List
 
 from autogen_agentchat.agents import AssistantAgent
-from autogen_core.model_context import BufferedChatCompletionContext
+from autogen_core.model_context import HeadAndTailChatCompletionContext
 
 from .config import config
 from .mmore_client import retrieve
 from .web_search import search_web
 
+_search_state = {"failed_streak": 0}
+_MAX_FAILED_STREAK = 3
+
+
+def reset_search_state() -> None:
+    _search_state["failed_streak"] = 0
+
 
 def _ctx():
-    return BufferedChatCompletionContext(buffer_size=config.context_window)
+    return HeadAndTailChatCompletionContext(
+        head_size=config.context_head, tail_size=config.context_tail
+    )
 
 
-def search_documents(query: str, max_matches: int = 5) -> str:
-    """Search the indexed paper corpus for chunks matching the query.
+def _track(result: str) -> str:
+    bad = result.startswith("ERROR") or result == "No results found."
+    if bad:
+        _search_state["failed_streak"] += 1
+    else:
+        _search_state["failed_streak"] = 0
+    if _search_state["failed_streak"] >= _MAX_FAILED_STREAK:
+        return (
+            "Stop searching: the last few attempts returned nothing. "
+            "Report what you already have and let the Critic decide."
+        )
+    return result
 
-    Args:
-        query: a precise natural-language query, one topic at a time.
-        max_matches: number of chunks to return. Bump it up when the first
-            call returns too few or off-topic results before trying a new
-            query. Drop it down when chunks are noisy.
 
-    Returns:
-        Chunks separated by '---', each prefixed with a header containing
-        the chunk index, the fileId and the source file path.
+def search_documents(
+    query: str, max_matches: int = 5, min_similarity: float = -1.0
+) -> str:
+    """Search the indexed paper corpus.
+
+    One topic per query. If results are empty or off-topic, retry with a
+    higher max_matches, lower min_similarity, or a reworded query before
+    giving up.
+
+    max_matches: chunks to return (default 5; bump to 10-15 if sparse).
+    min_similarity: -1.0 keeps everything, 0.3-0.5 drops weak matches.
+    Returns chunks joined by '---', or "No results found." if nothing hit.
     """
-    return retrieve(query, max_matches=max_matches)
+    if not query.strip():
+        return "ERROR: 'query' is required. Call again with a specific query string."
+    return _track(
+        retrieve(query, max_matches=max_matches, min_similarity=min_similarity)
+    )
 
 
 def search_web_tool(query: str) -> str:
-    """Search the open web via Tavily.
-
-    Use this when the indexed corpus clearly doesn't cover the topic
-    (off-topic chunks, very recent events, very broad question).
-    """
-    return search_web(query)
+    """Tavily web search. Use when the corpus doesn't cover the topic."""
+    if not query.strip():
+        return "ERROR: 'query' is required. Call again with a specific query string."
+    return _track(search_web(query))
 
 
 PLANNER_PROMPT = (
@@ -62,17 +87,25 @@ def create_agents(model_client):
     tools: List[Callable[..., Any]] = [search_documents]
     retriever_msg = (
         "You are a retrieval agent. Use search_documents to find chunks for "
-        "each query. Only report what the tool returns, don't invent content."
+        "each query.\n"
+        "If a call returns nothing or off-topic chunks, don't give up: retry "
+        "the same need with adjusted parameters (lower min_similarity, higher "
+        "max_matches, or a reworded query) before moving on.\n"
+        "Only report what the tool returns, don't invent content."
     )
     if config.websearch_enabled:
         tools.append(search_web_tool)
         retriever_msg = (
             "You are a retrieval agent with two tools:\n"
-            "- search_documents: indexed corpus\n"
+            "- search_documents: indexed corpus (tune max_matches / min_similarity)\n"
             "- search_web_tool: open web via Tavily\n\n"
-            "For each query, always call search_documents first. If the chunks "
-            "are off-topic or there are too few results, also call search_web_tool. "
-            "Report everything both tools return. Don't invent content."
+            "Always pass a non-empty query string to either tool.\n"
+            "For each query: call search_documents first. If it returns nothing "
+            "or off-topic chunks, retry ONCE with adjusted parameters (higher "
+            "max_matches, lower min_similarity, or a reworded query). If the "
+            "second attempt still fails, you MUST call search_web_tool with the "
+            "same query before moving on -- do not give up on the corpus only. "
+            "Report everything the tools return. Don't invent content."
         )
 
     retriever = AssistantAgent(
@@ -90,15 +123,17 @@ def create_agents(model_client):
         model_client=model_client,
         description="Checks if we have enough information to write the answer.",
         system_message=(
-            "You review the retrieved chunks and decide if we have enough coverage to "
-            "answer the original question.\n\n"
-            "Output EXACTLY ONE verdict on the FIRST line of your reply:\n"
-            "- COVERAGE_OK if the chunks contain enough information to answer the question.\n"
-            "- NEEDS_MORE if the chunks are off-topic, missing key aspects, or too sparse.\n\n"
+            "Judge whether the retrieved chunks actually address the ORIGINAL "
+            "question -- not whether chunks merely exist. Chunks that are on a "
+            "different topic count as no coverage.\n\n"
+            "Output EXACTLY ONE verdict on the FIRST line:\n"
+            "- COVERAGE_OK only if the chunks genuinely answer the question.\n"
+            "- NEEDS_MORE if the chunks are off-topic, unrelated, missing key "
+            "aspects, or too sparse.\n\n"
             "Never write both verdicts in the same reply.\n"
-            "If NEEDS_MORE: on the next lines, suggest 1-3 additional queries that would "
-            "fill the gaps. Frame these queries so they help the Retriever find missing info "
-            "(use the open web if the corpus clearly doesn't cover the topic)."
+            "If NEEDS_MORE: list 1-3 follow-up queries. If the corpus chunks are "
+            "clearly off-topic for the question, explicitly tell the Retriever to "
+            "use search_web_tool for these queries."
         ),
         model_context=_ctx(),
     )
@@ -108,14 +143,21 @@ def create_agents(model_client):
         model_client=model_client,
         description="Writes the final synthesis.",
         system_message=(
-            "Based on the retrieved chunks, write a structured literature review.\n\n"
-            "## Summary\n"
-            "## Key Findings\n"
-            "## Gaps & Limitations\n"
-            "## Sources\n"
-            "List ONLY the chunks that actually appear above. Use the bracketed labels "
-            "as-is, e.g. [Chunk 3 | abc123] for corpus chunks or [Web 2 | Title | URL] for web results. "
-            "Do not add any sources from your training knowledge. If a paper or page is not in the chunks, do not cite it.\n\n"
+            "You write a literature review STRICTLY from the retrieved chunks above. "
+            "You have no other knowledge.\n\n"
+            "Before writing, check whether the chunks actually contain information "
+            "that answers the original question. If they do NOT (off-topic, empty, "
+            "or unrelated to the question), do not write a review. Instead reply "
+            "exactly:\n"
+            "  The retrieved sources do not contain information answering this "
+            "question. The corpus does not appear to cover this topic.\n"
+            "Then end with TERMINATE. Never fill the gap with general knowledge.\n\n"
+            "If the chunks DO answer the question, write:\n"
+            "## Summary\n## Key Findings\n## Gaps & Limitations\n## Sources\n\n"
+            "Every claim must be traceable to a specific chunk. Cite chunks with "
+            "their bracketed label exactly as shown, e.g. [Chunk 3 | title] or "
+            "[Web 2 | Title | URL]. Do not state anything that is not in a chunk, "
+            "and do not cite a source that is not in the chunks above.\n\n"
             "End with: TERMINATE"
         ),
         model_context=_ctx(),

@@ -1,7 +1,9 @@
 from .config import config, get_tavily_key
 
 
-def search_web(query: str) -> str:
+def search_web(query: str = "") -> str:
+    if not query.strip():
+        return "ERROR: 'query' is required. Call again with a specific query string."
     if not config.websearch_enabled:
         return "ERROR: web search is disabled in config.yaml."
 

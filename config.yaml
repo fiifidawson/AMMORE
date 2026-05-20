@@ -38,10 +38,17 @@ retrieval:
   max_total_chars: 5000
 
 loop:
-  max_messages: 10       # hard cap for the multi-agent loop
-  context_window: 4      # last N messages each agent sees (keeps tokens in check)
+  max_messages: 24       # hard cap; selector forces the Writer 2 messages before this
+  # head: first N messages kept (the task), tail: last N. avoids losing the question.
+  context_head: 2
+  context_tail: 8
 
 websearch:
   enabled: true      # set to true once TAVILY_API_KEY is set in .env
   max_results: 5         # web results returned per query
   search_depth: basic    # basic | advanced (advanced costs more credits)
+
+document_metadata:
+  # cheap = regex, llm = one call per doc, none = skip
+  mode: cheap
+  include_in_prompt: true
