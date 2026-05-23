@@ -4,6 +4,7 @@ from autogen_agentchat.agents import AssistantAgent
 from autogen_core.model_context import HeadAndTailChatCompletionContext
 
 from .config import config
+from .critic import CriticAgent
 from .mmore_client import retrieve
 from .web_search import search_web
 
@@ -118,25 +119,7 @@ def create_agents(model_client):
         model_context=_ctx(),
     )
 
-    critic = AssistantAgent(
-        name="Critic",
-        model_client=model_client,
-        description="Checks if we have enough information to write the answer.",
-        system_message=(
-            "Judge whether the retrieved chunks actually address the ORIGINAL "
-            "question -- not whether chunks merely exist. Chunks that are on a "
-            "different topic count as no coverage.\n\n"
-            "Output EXACTLY ONE verdict on the FIRST line:\n"
-            "- COVERAGE_OK only if the chunks genuinely answer the question.\n"
-            "- NEEDS_MORE if the chunks are off-topic, unrelated, missing key "
-            "aspects, or too sparse.\n\n"
-            "Never write both verdicts in the same reply.\n"
-            "If NEEDS_MORE: list 1-3 follow-up queries. If the corpus chunks are "
-            "clearly off-topic for the question, explicitly tell the Retriever to "
-            "use search_web_tool for these queries."
-        ),
-        model_context=_ctx(),
-    )
+    critic = CriticAgent()
 
     writer = AssistantAgent(
         name="Writer",
