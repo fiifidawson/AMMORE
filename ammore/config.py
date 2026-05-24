@@ -50,44 +50,51 @@ class Config:
     @classmethod
     def load(cls, path: str | Path = "config.yaml") -> "Config":
         with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+            data = yaml.safe_load(f) or {}
 
-        mmore_cfg = data["mmore"]
+        mistral = data.get("mistral", {})
+        ollama = data.get("ollama", {})
+        mmore_cfg = data.get("mmore", {})
+        retrieval = data.get("retrieval", {})
+        loop = data.get("loop", {})
+        websearch = data.get("websearch", {})
+        metadata = data.get("document_metadata", {})
 
         retriever_cfg = mmore_cfg.get("retriever_config_file", "")
         if retriever_cfg and not os.path.isabs(retriever_cfg):
             retriever_cfg = str((Path(path).parent / retriever_cfg).resolve())
 
+        host = mmore_cfg.get("host", "127.0.0.1")
+        port = mmore_cfg.get("port", 8001)
+
         return cls(
-            provider=data["provider"],
-            mistral_model=data["mistral"]["model"],
-            mistral_base_url=data["mistral"]["base_url"],
-            ollama_model=data["ollama"]["model"],
-            ollama_base_url=data["ollama"]["base_url"],
-            retriever_url=mmore_cfg["retriever_url"],
+            provider=data.get("provider", "mistral"),
+            mistral_model=mistral.get("model", "mistral-small-latest"),
+            mistral_base_url=mistral.get("base_url", "https://api.mistral.ai/v1"),
+            ollama_model=ollama.get("model", "llama3.2:3b"),
+            ollama_base_url=ollama.get("base_url", "http://localhost:11434"),
+            retriever_url=mmore_cfg.get(
+                "retriever_url", f"http://{host}:{port}/v1/retrieve"
+            ),
             auto_launch=mmore_cfg.get("auto_launch", True),
             retriever_config_file=retriever_cfg,
-            retriever_host=mmore_cfg.get("host", "127.0.0.1"),
-            retriever_port=mmore_cfg.get("port", 8001),
-            startup_timeout=mmore_cfg.get("startup_timeout", 30),
+            retriever_host=host,
+            retriever_port=port,
+            startup_timeout=mmore_cfg.get("startup_timeout", 180),
             milvus_uri=_resolve_milvus_uri(mmore_cfg.get("milvus_uri", "auto")),
             milvus_db=mmore_cfg.get("milvus_db", "my_db"),
-            max_matches=data["retrieval"]["max_matches"],
-            min_similarity=data["retrieval"]["min_similarity"],
-            max_chunk_chars=data["retrieval"].get("max_chunk_chars", 2500),
-            max_total_chars=data["retrieval"].get("max_total_chars", 16000),
-            max_messages=data["loop"]["max_messages"],
-            context_head=data["loop"].get("context_head", 2),
-            context_tail=data["loop"].get("context_tail", 8),
-            websearch_enabled=data.get("websearch", {}).get("enabled", False),
-            websearch_max_results=data.get("websearch", {}).get("max_results", 5),
-            websearch_search_depth=data.get("websearch", {}).get(
-                "search_depth", "basic"
-            ),
-            metadata_mode=data.get("document_metadata", {}).get("mode", "cheap"),
-            metadata_in_prompt=data.get("document_metadata", {}).get(
-                "include_in_prompt", True
-            ),
+            max_matches=retrieval.get("max_matches", 3),
+            min_similarity=retrieval.get("min_similarity", -1.0),
+            max_chunk_chars=retrieval.get("max_chunk_chars", 1200),
+            max_total_chars=retrieval.get("max_total_chars", 5000),
+            max_messages=loop.get("max_messages", 24),
+            context_head=loop.get("context_head", 2),
+            context_tail=loop.get("context_tail", 8),
+            websearch_enabled=websearch.get("enabled", False),
+            websearch_max_results=websearch.get("max_results", 5),
+            websearch_search_depth=websearch.get("search_depth", "basic"),
+            metadata_mode=metadata.get("mode", "cheap"),
+            metadata_in_prompt=metadata.get("include_in_prompt", True),
         )
 
 

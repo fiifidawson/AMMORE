@@ -1,54 +1,20 @@
-# AMMORE configuration
-# API keys stay in .env (sensitive). Everything else lives here.
+# AMMORE configuration. Defaults live in ammore/config.py — override only what you need.
+# API keys go in .env.
 
 provider: mistral   # mistral | ollama
 
 mistral:
   model: mistral-small-latest
-  base_url: https://api.mistral.ai/v1
 
 ollama:
   model: llama3.2:3b
-  base_url: http://localhost:11434
-
-mmore:
-  retriever_url: http://127.0.0.1:8001/v1/retrieve
-  # Auto-launch the mmore retriever as a subprocess if it's not already running.
-  # Set to false if you prefer to start it manually.
-  auto_launch: true
-  retriever_config_file: ../examples/retriever_api/config.yaml
-  host: 127.0.0.1
-  port: 8001
-  startup_timeout: 180  # seconds to wait for the retriever to become ready
-  # Milvus backend used by the corpus auto-indexing (--corpus).
-  # "auto"  -> Docker Milvus on Windows (milvus-lite has no Windows build),
-  #            local milvus-lite file on Linux/macOS (no Docker needed)
-  # or set an explicit value: "http://127.0.0.1:19530" or "./milvus.db"
-  milvus_uri: auto
-  milvus_db: my_db
 
 retrieval:
-  max_matches: 3         # chunks per query
-  min_similarity: -1     # -1 disables the filter
-  # Safety net for corpora indexed with very large chunks. A chunk over
-  # max_chunk_chars keeps its head and tail with a [...] marker in between;
-  # once the combined output reaches max_total_chars, remaining chunks are
-  # dropped. Set both to 0 to disable.
-  max_chunk_chars: 1200
-  max_total_chars: 5000
-
-loop:
-  max_messages: 24       # hard cap; selector forces the Writer 2 messages before this
-  # head: first N messages kept (the task), tail: last N. avoids losing the question.
-  context_head: 2
-  context_tail: 8
+  max_matches: 3
+  min_similarity: -1
 
 websearch:
-  enabled: true      # set to true once TAVILY_API_KEY is set in .env
-  max_results: 5         # web results returned per query
-  search_depth: basic    # basic | advanced (advanced costs more credits)
+  enabled: true   # needs TAVILY_API_KEY in .env
 
 document_metadata:
-  # cheap = regex, llm = one call per doc, none = skip
-  mode: cheap
-  include_in_prompt: true
+  mode: cheap   # cheap | llm | none
