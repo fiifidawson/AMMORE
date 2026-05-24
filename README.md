@@ -2,94 +2,99 @@
 
 Agentic literature review built on top of [mmore](https://github.com/swiss-ai/mmore). Instead of a single retrieval pass, AMMORE uses a multi-agent loop to decompose the question, retrieve iteratively, check coverage, and write a structured synthesis.
 
-Built with [AutoGen](https://github.com/microsoft/autogen).
+Built with [AutoGen](https://github.com/microsoft/autogen) and [dspy](https://github.com/stanfordnlp/dspy).
 
 ## How it works
 
 ```
 question
   └─> Planner        breaks it into 3-5 sub-queries
-        └─> Retriever    searches mmore for each query
-              └─> Critic     enough info? if not, loops back
-                    └─> Writer   structured synthesis
+        └─> Retriever    searches mmore (and Tavily on fallback)
+              └─> Critic     dspy verdict: COVERAGE_OK or NEEDS_MORE
+                    └─> Writer   structured synthesis with citations
 ```
 
 The user validates the sub-queries before the loop starts, useful for catching when the planner misunderstands the question.
 
 ## Setup
 
-**Prerequisites:** mmore installed and documents indexed.
-
 ```bash
+git clone <repo-url> AMMORE
 cd AMMORE
-pip install -r requirements.txt
-cp .env.example .env   # then add your Mistral API key
+uv venv
+.venv\Scripts\activate         # Windows
+# source .venv/bin/activate    # Linux / macOS
+uv pip install -e .
+cp .env.example .env           # then add your Mistral API key
 ```
 
-**.env** — only the API key:
+This pulls mmore (with `process`, `index`, `api` extras) and AMMORE in one go.
+
+`.env` — only the API keys:
 ```
 MISTRAL_API_KEY=your-key-here
+TAVILY_API_KEY=your-key-here   # optional, for web fallback
 ```
 
-**config.yaml** — everything else (provider, models, URLs, retrieval and loop settings):
+`config.yaml` — the things you actually tune. Defaults for everything else live in `ammore/config.py`.
 ```yaml
 provider: mistral   # or ollama
 
 mistral:
   model: mistral-small-latest
-  base_url: https://api.mistral.ai/v1
 
 ollama:
   model: llama3.2:3b
-  base_url: http://localhost:11434
-
-mmore:
-  retriever_url: http://127.0.0.1:8001/v1/retrieve
 
 retrieval:
-  max_matches: 10
+  max_matches: 3
   min_similarity: -1
 
-loop:
-  max_messages: 20
+websearch:
+  enabled: true
+
+document_metadata:
+  mode: cheap   # cheap | llm | none
 ```
 
 ## Usage
 
+Point AMMORE at a folder of documents with `--corpus`. It indexes them once, then runs the agent loop:
+
 ```bash
-python -m ammore "What are the main evaluation methods for multimodal LLMs?"
+python -m ammore "What are the main evaluation methods for multimodal LLMs?" --corpus path/to/papers/
 ```
 
-AMMORE auto-launches the mmore retriever as a subprocess if it's not already running (configured via `mmore.auto_launch` in config.yaml). To launch it manually instead, set `auto_launch: false` and run `python -m mmore retrieve --config-file examples/retriever_api/config.yaml --host 127.0.0.1 --port 8001` in another terminal.
+Or without `--corpus` if you already have an mmore retriever running with an indexed collection:
+
+```bash
+python -m ammore "your question"
+```
+
+AMMORE auto-launches the mmore retriever as a subprocess. Synthesis is saved to `outputs/review_<timestamp>.md`.
 
 ## Project structure
 
 ```
 ammore/
-  main.py               # entry point — plan, validate, run
-  agents.py             # the 4 agents + search tools
-  mmore_client.py       # calls mmore retriever API
+  main.py               # entry point - plan, validate, run
+  agents.py             # Retriever, Planner, Writer + search tools
+  critic.py             # dspy Critic with structured verdicts
+  corpus.py             # per-corpus indexing for --corpus
+  document_metadata.py  # per-corpus title/abstract overview
+  mmore_client.py       # calls the mmore retriever API
   web_search.py         # Tavily web search tool
   llm.py                # Mistral or Ollama client
-  config.py             # loads config.yaml + API keys from .env
-  retriever_launcher.py # auto-launches the mmore retriever subprocess
-config.yaml             # provider, models, URLs, retrieval/loop/websearch settings
+  config.py             # config.yaml + .env loader
+  retriever_launcher.py # launches the mmore retriever subprocess
+config.yaml             # user-facing config
 ```
 
-## Optional: web search
+## Web search
 
-The Retriever can use Tavily as a second tool for queries that go beyond the indexed corpus (e.g. recent papers, broader context). To enable it:
-
-1. Get a free key at https://tavily.com (free student tier covers 1k queries/month)
-2. Add `TAVILY_API_KEY=...` to `.env`
-3. Set `websearch.enabled: true` in `config.yaml`
-4. `pip install tavily-python` (already in `requirements.txt`)
-
-When enabled, the Retriever's system message tells it to prefer the corpus and fall back to the web only when needed.
+The Retriever falls back to Tavily when the corpus doesn't cover the question. Enabled by default in `config.yaml`. To use it, get a free key at https://tavily.com (1k queries/month on the student tier) and add `TAVILY_API_KEY` to `.env`.
 
 ## Development
-
-Lint, format, and type checking match the mmore setup:
 
 ```bash
 pip install pre-commit ruff pyright
@@ -98,17 +103,16 @@ ruff check . && ruff format .
 pyright
 ```
 
-Tool configuration lives in `pyproject.toml` (ruff + pyright) and `.pre-commit-config.yaml`.
-
 ## Design notes
 
-- **Sub-questions:** 3-5 per question, generated by the Planner, shown to the user before anything runs
-- **Chunks:** 5 per sub-query by default (`max_matches` in `mmore_client.py`)
-- **Loop stopping:** Critic says `COVERAGE_OK` → Writer runs. Hard cap at 20 messages total
-- **LLM:** one model for all agents. Mistral-small works well; llama3.2:3b works but the synthesis quality drops
+- **Sub-questions:** 3-5 per question, generated by the Planner, shown to the user before the loop starts
+- **Chunks:** `max_matches` per sub-query (default 3, set in `config.yaml`)
+- **Critic verdicts:** dspy guarantees the shape (`COVERAGE_OK` / `NEEDS_MORE` + follow-up queries)
+- **Loop cap:** hard cap at 24 messages; the selector forces the Writer to run 2 messages before the cap
+- **LLM:** one model for all agents. Mistral-small works well; llama3.2:3b runs but the synthesis quality drops
 
 ## What's not implemented yet
 
-- Web search (mmore has it, not plugged in here)
 - Two-stage retrieval (document-level then chunk-level)
 - Different models per agent role
+- Humani-T integration (consuming the JSON output of Humani-T's paper search step)
