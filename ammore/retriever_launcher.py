@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
@@ -63,11 +64,16 @@ def auto_retriever(config_file=None):
         str(config.retriever_port),
     ]
 
+    log_path = Path("traces") / "retriever.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_file = open(log_path, "w", encoding="utf-8")
+
     print(f"Starting mmore retriever: {' '.join(cmd)}")
+    print(f"(retriever output -> {log_path})")
     proc = subprocess.Popen(
         cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
     )
 
     try:
@@ -75,7 +81,7 @@ def auto_retriever(config_file=None):
             proc.terminate()
             raise RuntimeError(
                 f"mmore retriever did not become ready within {config.startup_timeout}s. "
-                f"Try launching it manually to see the error."
+                f"Check {log_path} for the actual error."
             )
         print(f"Retriever ready at {config.retriever_url}\n")
         yield proc
@@ -87,3 +93,4 @@ def auto_retriever(config_file=None):
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
+        log_file.close()
