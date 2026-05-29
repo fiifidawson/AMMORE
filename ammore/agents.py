@@ -1,10 +1,12 @@
+import os
 from typing import Any, Callable, List
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.model_context import HeadAndTailChatCompletionContext
 
 from .config import config
-from .critic import CriticAgent
+
+# from .critic import CriticAgent  # diagnostic: temporarily reverted to AssistantAgent Critic
 from .mmore_client import retrieve
 from .web_search import search_web
 
@@ -94,7 +96,13 @@ def create_agents(model_client):
         "max_matches, or a reworded query) before moving on.\n"
         "Only report what the tool returns, don't invent content."
     )
-    if config.websearch_enabled:
+    web_ready = config.websearch_enabled and bool(os.getenv("TAVILY_API_KEY"))
+    if config.websearch_enabled and not web_ready:
+        print(
+            "Warning: websearch is enabled in config.yaml but TAVILY_API_KEY is not set; "
+            "the Retriever will only use the corpus."
+        )
+    if web_ready:
         tools.append(search_web_tool)
         retriever_msg = (
             "You are a retrieval agent with two tools:\n"
@@ -119,7 +127,25 @@ def create_agents(model_client):
         model_context=_ctx(),
     )
 
-    critic = CriticAgent()
+    critic = AssistantAgent(
+        name="Critic",
+        model_client=model_client,
+        description="Checks if we have enough information to write the answer.",
+        system_message=(
+            "Judge whether the retrieved chunks actually address the ORIGINAL "
+            "question -- not whether chunks merely exist. Chunks that are on a "
+            "different topic count as no coverage.\n\n"
+            "Output EXACTLY ONE verdict on the FIRST line:\n"
+            "- COVERAGE_OK only if the chunks genuinely answer the question.\n"
+            "- NEEDS_MORE if the chunks are off-topic, unrelated, missing key "
+            "aspects, or too sparse.\n\n"
+            "Never write both verdicts in the same reply.\n"
+            "If NEEDS_MORE: list 1-3 follow-up queries. If the corpus chunks are "
+            "clearly off-topic for the question, explicitly tell the Retriever to "
+            "use search_web_tool for these queries."
+        ),
+        model_context=_ctx(),
+    )
 
     writer = AssistantAgent(
         name="Writer",
@@ -128,17 +154,18 @@ def create_agents(model_client):
         system_message=(
             "You write a literature review STRICTLY from the retrieved chunks above. "
             "You have no other knowledge.\n\n"
-            "Before writing, check whether the chunks actually contain information "
-            "that answers the original question. If they do NOT (off-topic, empty, "
-            "or unrelated to the question), do not write a review. Instead reply "
-            "exactly:\n"
+            "Use ONLY the chunks that are actually relevant to the original question. "
+            "Off-topic chunks are fine to ignore -- you do not need every chunk to be "
+            "on-topic, as long as at least one chunk meaningfully addresses the question.\n\n"
+            "Only if NO chunk at all addresses the question (all are off-topic, empty, "
+            "or unrelated), reply EXACTLY:\n"
             "  The retrieved sources do not contain information answering this "
             "question. The corpus does not appear to cover this topic.\n"
             "Then end with TERMINATE. Never fill the gap with general knowledge.\n\n"
-            "If the chunks DO answer the question, write:\n"
+            "Otherwise, write:\n"
             "## Summary\n## Key Findings\n## Gaps & Limitations\n## Sources\n\n"
-            "Every claim must be traceable to a specific chunk. Cite chunks with "
-            "their bracketed label exactly as shown, e.g. [Chunk 3 | title] or "
+            "Every claim must be traceable to a specific on-topic chunk. Cite chunks "
+            "with their bracketed label exactly as shown, e.g. [Chunk 3 | title] or "
             "[Web 2 | Title | URL]. Do not state anything that is not in a chunk, "
             "and do not cite a source that is not in the chunks above.\n\n"
             "End with: TERMINATE"
