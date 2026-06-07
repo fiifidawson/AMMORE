@@ -84,7 +84,7 @@ async def _llm_extract(text: str, model_client) -> dict:
 
 
 def build_overview(merged_jsonl: Path, work_dir: Path) -> Path | None:
-    mode = config.metadata_mode
+    mode = config.document_metadata.mode
     if mode == "none":
         return None
 

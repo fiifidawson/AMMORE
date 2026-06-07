@@ -4,7 +4,7 @@ from .config import config, get_tavily_key
 def search_web(query: str = "") -> str:
     if not query.strip():
         return "ERROR: 'query' is required. Call again with a specific query string."
-    if not config.websearch_enabled:
+    if not config.websearch.enabled:
         return "ERROR: web search is disabled in config.yaml."
 
     try:
@@ -16,8 +16,8 @@ def search_web(query: str = "") -> str:
         client = TavilyClient(api_key=get_tavily_key())
         response = client.search(
             query=query,
-            max_results=config.websearch_max_results,
-            search_depth=config.websearch_search_depth,  # type: ignore[arg-type]
+            max_results=config.websearch.max_results,
+            search_depth=config.websearch.search_depth,  # type: ignore[arg-type]
         )
     except Exception as e:
         return f"ERROR: Tavily search failed: {e}"

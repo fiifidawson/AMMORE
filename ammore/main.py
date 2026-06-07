@@ -18,7 +18,7 @@ from .retriever_launcher import auto_retriever
 
 
 def _corpus_overview(corpus: Path | None) -> str:
-    if corpus is None or not config.metadata_in_prompt:
+    if corpus is None or not config.document_metadata.include_in_prompt:
         return ""
     path = document_metadata_path(corpus)
     if not path.exists():
@@ -72,7 +72,7 @@ async def run(question: str, corpus: Path | None = None):
     )
 
     termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(
-        config.max_messages
+        config.loop.max_messages
     )
 
     def selector(messages: Sequence[BaseAgentEvent | BaseChatMessage]) -> str | None:
@@ -88,7 +88,7 @@ async def run(question: str, corpus: Path | None = None):
         )
 
         # force the Writer near the cap so we always get a synthesis
-        if len(messages) >= config.max_messages - 2 and sender != "Writer":
+        if len(messages) >= config.loop.max_messages - 2 and sender != "Writer":
             return "Writer"
 
         if sender == "Retriever":

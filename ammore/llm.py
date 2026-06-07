@@ -6,9 +6,9 @@ def get_model_client():
         from autogen_ext.models.openai import OpenAIChatCompletionClient
 
         return OpenAIChatCompletionClient(
-            model=config.mistral_model,
+            model=config.mistral.model,
             api_key=get_api_key(),
-            base_url=config.mistral_base_url,
+            base_url=config.mistral.base_url,
             model_info={
                 "vision": False,
                 "function_calling": True,
@@ -22,8 +22,8 @@ def get_model_client():
         from autogen_ext.models.ollama import OllamaChatCompletionClient
 
         return OllamaChatCompletionClient(
-            model=config.ollama_model,
-            host=config.ollama_base_url,
+            model=config.ollama.model,
+            host=config.ollama.base_url,
         )
 
     else:

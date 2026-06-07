@@ -1,8 +1,9 @@
 import os
 import platform
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import dacite
 import yaml
 from dotenv import load_dotenv
 
@@ -20,85 +21,90 @@ def _resolve_milvus_uri(value: str) -> str:
 
 
 @dataclass
+class MistralConfig:
+    model: str = "mistral-small-latest"
+    base_url: str = "https://api.mistral.ai/v1"
+
+
+@dataclass
+class OllamaConfig:
+    model: str = "llama3.2:3b"
+    base_url: str = "http://localhost:11434"
+
+
+@dataclass
+class MmoreConfig:
+    retriever_url: str = ""
+    auto_launch: bool = True
+    retriever_config_file: str = ""
+    host: str = "127.0.0.1"
+    port: int = 8001
+    startup_timeout: int = 180
+    milvus_uri: str = "auto"
+    milvus_db: str = "my_db"
+
+    def __post_init__(self):
+        if not self.retriever_url:
+            self.retriever_url = f"http://{self.host}:{self.port}/v1/retrieve"
+        self.milvus_uri = _resolve_milvus_uri(self.milvus_uri)
+
+
+@dataclass
+class RetrievalConfig:
+    max_matches: int = 3
+    min_similarity: float = -1.0
+    max_chunk_chars: int = 1200
+    max_total_chars: int = 5000
+
+
+@dataclass
+class LoopConfig:
+    max_messages: int = 24
+    context_head: int = 2
+    context_tail: int = 8
+
+
+@dataclass
+class WebsearchConfig:
+    enabled: bool = False
+    max_results: int = 5
+    search_depth: str = "basic"
+
+
+@dataclass
+class DocumentMetadataConfig:
+    mode: str = "cheap"
+    include_in_prompt: bool = True
+
+
+@dataclass
 class Config:
-    provider: str
-    mistral_model: str
-    mistral_base_url: str
-    ollama_model: str
-    ollama_base_url: str
-    retriever_url: str
-    auto_launch: bool
-    retriever_config_file: str
-    retriever_host: str
-    retriever_port: int
-    startup_timeout: int
-    milvus_uri: str
-    milvus_db: str
-    max_matches: int
-    min_similarity: float
-    max_chunk_chars: int
-    max_total_chars: int
-    max_messages: int
-    context_head: int
-    context_tail: int
-    websearch_enabled: bool
-    websearch_max_results: int
-    websearch_search_depth: str
-    metadata_mode: str
-    metadata_in_prompt: bool
+    provider: str = "mistral"
+    mistral: MistralConfig = field(default_factory=MistralConfig)
+    ollama: OllamaConfig = field(default_factory=OllamaConfig)
+    mmore: MmoreConfig = field(default_factory=MmoreConfig)
+    retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
+    loop: LoopConfig = field(default_factory=LoopConfig)
+    websearch: WebsearchConfig = field(default_factory=WebsearchConfig)
+    document_metadata: DocumentMetadataConfig = field(
+        default_factory=DocumentMetadataConfig
+    )
 
-    @classmethod
-    def load(cls, path: str | Path = "config.yaml") -> "Config":
-        with open(path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
 
-        mistral = data.get("mistral", {})
-        ollama = data.get("ollama", {})
-        mmore_cfg = data.get("mmore", {})
-        retrieval = data.get("retrieval", {})
-        loop = data.get("loop", {})
-        websearch = data.get("websearch", {})
-        metadata = data.get("document_metadata", {})
-
-        retriever_cfg = mmore_cfg.get("retriever_config_file", "")
-        if retriever_cfg and not os.path.isabs(retriever_cfg):
-            retriever_cfg = str((Path(path).parent / retriever_cfg).resolve())
-
-        host = mmore_cfg.get("host", "127.0.0.1")
-        port = mmore_cfg.get("port", 8001)
-
-        return cls(
-            provider=data.get("provider", "mistral"),
-            mistral_model=mistral.get("model", "mistral-small-latest"),
-            mistral_base_url=mistral.get("base_url", "https://api.mistral.ai/v1"),
-            ollama_model=ollama.get("model", "llama3.2:3b"),
-            ollama_base_url=ollama.get("base_url", "http://localhost:11434"),
-            retriever_url=mmore_cfg.get(
-                "retriever_url", f"http://{host}:{port}/v1/retrieve"
-            ),
-            auto_launch=mmore_cfg.get("auto_launch", True),
-            retriever_config_file=retriever_cfg,
-            retriever_host=host,
-            retriever_port=port,
-            startup_timeout=mmore_cfg.get("startup_timeout", 180),
-            milvus_uri=_resolve_milvus_uri(mmore_cfg.get("milvus_uri", "auto")),
-            milvus_db=mmore_cfg.get("milvus_db", "my_db"),
-            max_matches=retrieval.get("max_matches", 3),
-            min_similarity=retrieval.get("min_similarity", -1.0),
-            max_chunk_chars=retrieval.get("max_chunk_chars", 1200),
-            max_total_chars=retrieval.get("max_total_chars", 5000),
-            max_messages=loop.get("max_messages", 24),
-            context_head=loop.get("context_head", 2),
-            context_tail=loop.get("context_tail", 8),
-            websearch_enabled=websearch.get("enabled", False),
-            websearch_max_results=websearch.get("max_results", 5),
-            websearch_search_depth=websearch.get("search_depth", "basic"),
-            metadata_mode=metadata.get("mode", "cheap"),
-            metadata_in_prompt=metadata.get("include_in_prompt", True),
+def load_config(path: str | Path, cls: type = Config) -> Config:
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    cfg = dacite.from_dict(data_class=cls, data=data)
+    if cfg.mmore.retriever_config_file and not os.path.isabs(
+        cfg.mmore.retriever_config_file
+    ):
+        cfg.mmore.retriever_config_file = str(
+            (Path(path).parent / cfg.mmore.retriever_config_file).resolve()
         )
+    return cfg
 
 
-config = Config.load(_AMMORE_ROOT / "config.yaml")
+config = load_config(_AMMORE_ROOT / "config.yaml")
 
 
 def get_api_key() -> str:

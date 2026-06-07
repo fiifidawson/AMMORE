@@ -1,3 +1,4 @@
+import json
 import re
 import subprocess
 import sys
@@ -12,7 +13,7 @@ from .document_metadata import build_overview
 
 
 def _uses_local_milvus() -> bool:
-    return "://" not in config.milvus_uri
+    return "://" not in config.mmore.milvus_uri
 
 
 def _corpus_slug(corpus: Path) -> str:
@@ -20,14 +21,54 @@ def _corpus_slug(corpus: Path) -> str:
     return f"ammore_{name}"
 
 
+# mmore's retriever ignores config.collection_name and always queries "my_docs",
+# so AMMORE indexes every corpus into that single collection and tracks which one
+# is currently loaded via an active_corpus stamp file.
+_COLLECTION = "my_docs"
+
+
 def _collection_name(corpus: Path) -> str:
-    # one collection per corpus so switching --corpus doesn't mix results
-    return _corpus_slug(corpus)
+    return _COLLECTION
 
 
 def document_metadata_path(corpus: Path) -> Path:
     work_dir = Path(tempfile.gettempdir()) / "ammore" / _corpus_slug(corpus)
     return work_dir / "document_metadata.md"
+
+
+def _active_stamp() -> Path:
+    return Path(tempfile.gettempdir()) / "ammore" / "active_corpus.txt"
+
+
+def _is_active(corpus: Path) -> bool:
+    stamp = _active_stamp()
+    if not stamp.exists():
+        return False
+    return stamp.read_text(encoding="utf-8").strip() == _corpus_slug(corpus)
+
+
+def _mark_active(corpus: Path) -> None:
+    stamp = _active_stamp()
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(_corpus_slug(corpus), encoding="utf-8")
+
+
+def _drop_collection_if_exists(name: str) -> None:
+    if _uses_local_milvus():
+        return
+    client = None
+    try:
+        client = MilvusClient(
+            uri=config.mmore.milvus_uri, db_name=config.mmore.milvus_db
+        )
+        if name in client.list_collections():
+            client.drop_collection(name)
+            print(f"Dropped previous '{name}' collection")
+    except Exception as e:
+        print(f"Warning: could not drop '{name}': {e}")
+    finally:
+        if client is not None:
+            client.close()
 
 
 def _already_indexed(collection_name: str) -> bool:
@@ -39,7 +80,9 @@ def _already_indexed(collection_name: str) -> bool:
 
     client = None
     try:
-        client = MilvusClient(uri=config.milvus_uri, db_name=config.milvus_db)
+        client = MilvusClient(
+            uri=config.mmore.milvus_uri, db_name=config.mmore.milvus_db
+        )
         collections = list(client.list_collections())  # type: ignore[call-overload]
         return collection_name in collections
     except Exception:
@@ -76,7 +119,7 @@ def _write_index_cfg(work_dir: Path, collection_name: str) -> Path:
                 "is_multimodal": False,
             },
             "sparse_model": {"model_name": "splade", "is_multimodal": False},
-            "db": {"uri": config.milvus_uri, "name": config.milvus_db},
+            "db": {"uri": config.mmore.milvus_uri, "name": config.mmore.milvus_db},
         },
         "collection_name": collection_name,
         "documents_path": str(results_jsonl.resolve()),
@@ -114,9 +157,9 @@ def _write_postprocess_cfg(work_dir: Path) -> Path:
 
 def _write_retriever_cfg(work_dir: Path, collection_name: str) -> Path:
     cfg = {
-        "db": {"uri": config.milvus_uri, "name": config.milvus_db},
+        "db": {"uri": config.mmore.milvus_uri, "name": config.mmore.milvus_db},
         "hybrid_search_weight": 0.5,
-        "k": config.max_matches,
+        "k": config.retrieval.max_matches,
         "collection_name": collection_name,
         "reranker_model_name": None,
     }
@@ -127,13 +170,17 @@ def _write_retriever_cfg(work_dir: Path, collection_name: str) -> Path:
 
 
 def prepare_corpus(corpus: Path) -> Path:
-    """Index the corpus folder if needed and return a retriever config path.
+    """Index the corpus and return a retriever config path.
 
-    Skips processing + indexing when the corresponding Milvus collection
-    already exists. Returns the path of the retriever config to use.
+    Accepts either a folder of documents (runs mmore process) or a JSON file
+    with pre-extracted papers (skips mmore process, uses extracted_text).
+    Caches the indexed collection.
     """
+    if corpus.is_file() and corpus.suffix.lower() == ".json":
+        return _prepare_from_json(corpus)
+
     if not corpus.exists() or not corpus.is_dir():
-        raise FileNotFoundError(f"Corpus folder not found: {corpus}")
+        raise FileNotFoundError(f"Corpus not found: {corpus}")
 
     collection = _collection_name(corpus)
     work_dir = Path(tempfile.gettempdir()) / "ammore" / _corpus_slug(corpus)
@@ -142,11 +189,15 @@ def prepare_corpus(corpus: Path) -> Path:
     retriever_cfg = _write_retriever_cfg(work_dir, collection)
     merged = work_dir / "process_out" / "merged" / "merged_results.jsonl"
 
-    if _already_indexed(collection):
-        print(f"Corpus already indexed as '{collection}', skipping processing.")
+    if _is_active(corpus) and _already_indexed(collection):
+        print(
+            f"Corpus '{corpus.name}' already loaded into '{collection}', skipping processing."
+        )
         # still build the overview
         build_overview(merged, work_dir)
         return retriever_cfg
+
+    _drop_collection_if_exists(collection)
 
     print(f"Processing corpus at {corpus}...")
     process_cfg = _write_process_cfg(corpus, work_dir)
@@ -182,4 +233,116 @@ def prepare_corpus(corpus: Path) -> Path:
         check=True,
     )
 
+    _mark_active(corpus)
     return retriever_cfg
+
+
+def _prepare_from_json(json_path: Path) -> Path:
+    collection = _collection_name(json_path)
+    work_dir = Path(tempfile.gettempdir()) / "ammore" / _corpus_slug(json_path)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    merged = work_dir / "process_out" / "merged" / "merged_results.jsonl"
+    merged.parent.mkdir(parents=True, exist_ok=True)
+
+    retriever_cfg = _write_retriever_cfg(work_dir, collection)
+
+    if _is_active(json_path) and _already_indexed(collection):
+        print(
+            f"Corpus '{json_path.name}' already loaded into '{collection}', skipping rebuild."
+        )
+        if not (work_dir / "document_metadata.md").exists():
+            _write_synthetic_jsonl(json_path, merged, work_dir)
+        return retriever_cfg
+
+    _drop_collection_if_exists(collection)
+
+    print(f"Loading papers from {json_path}...")
+    n = _write_synthetic_jsonl(json_path, merged, work_dir)
+    print(f"Wrote {n} papers to {merged}")
+
+    print("Chunking papers...")
+    postprocess_cfg = _write_postprocess_cfg(work_dir)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mmore",
+            "postprocess",
+            "--config-file",
+            str(postprocess_cfg),
+            "--input-data",
+            str(merged),
+        ],
+        check=True,
+    )
+
+    print("Indexing chunks into Milvus...")
+    index_cfg = _write_index_cfg(work_dir, collection)
+    subprocess.run(
+        [sys.executable, "-m", "mmore", "index", "--config-file", str(index_cfg)],
+        check=True,
+    )
+
+    _mark_active(json_path)
+    return retriever_cfg
+
+
+def _write_synthetic_jsonl(json_path: Path, merged: Path, work_dir: Path) -> int:
+    papers = json.loads(json_path.read_text(encoding="utf-8"))
+    title_map: dict[str, str] = {}
+    overview_lines = ["# Corpus overview\n"]
+    used_slugs: set[str] = set()
+    written = 0
+
+    with open(merged, "w", encoding="utf-8") as out:
+        for i, paper in enumerate(papers, 1):
+            text = (paper.get("extracted_text") or "").strip()
+            if not text:
+                continue
+            title = (paper.get("title") or f"Paper {i}").strip() or f"Paper {i}"
+            base = re.sub(r"[^a-zA-Z0-9]+", "_", title.lower()).strip("_")[:60]
+            slug = base or f"paper_{i}"
+            # disambiguate duplicate titles
+            unique = slug
+            k = 2
+            while unique in used_slugs:
+                unique = f"{slug}_{k}"
+                k += 1
+            used_slugs.add(unique)
+            file_path = f"{unique}.json"
+
+            entry = {
+                "text": text,
+                "modalities": [],
+                "metadata": {
+                    "file_path": file_path,
+                    "document_type": "json",
+                    "processor_type": "AMMOREJSONProcessor",
+                    "title": title,
+                    "abstract": paper.get("abstract", ""),
+                    "authors": paper.get("authors", ""),
+                    "url": paper.get("url", ""),
+                    "year": paper.get("year"),
+                },
+            }
+            # ensure_ascii=True because mmore.postprocess reads jsonl with the system
+            # default encoding (cp1252 on Windows) and falls over on en-dashes etc.
+            out.write(json.dumps(entry) + "\n")
+            written += 1
+
+            title_map[file_path] = title
+            overview_lines.append(f"## {title}")
+            overview_lines.append(f"- file: {file_path}")
+            abstract = (paper.get("abstract") or "").strip()
+            if abstract:
+                overview_lines.append(f"- summary: {abstract}")
+            overview_lines.append("")
+
+    (work_dir / "document_metadata.md").write_text(
+        "\n".join(overview_lines), encoding="utf-8"
+    )
+    (work_dir / "title_map.json").write_text(
+        json.dumps(title_map, ensure_ascii=False), encoding="utf-8"
+    )
+    (work_dir / "metadata_mode.txt").write_text("json", encoding="utf-8")
+    return written

@@ -31,14 +31,18 @@ def _shorten(text: str, limit: int) -> str:
 def retrieve(
     query: str, max_matches: int | None = None, min_similarity: float | None = None
 ) -> str:
-    max_matches = max_matches if max_matches is not None else config.max_matches
+    max_matches = (
+        max_matches if max_matches is not None else config.retrieval.max_matches
+    )
     min_similarity = (
-        min_similarity if min_similarity is not None else config.min_similarity
+        min_similarity
+        if min_similarity is not None
+        else config.retrieval.min_similarity
     )
 
     try:
         response = requests.post(
-            config.retriever_url,
+            config.mmore.retriever_url,
             json={
                 "query": query,
                 "fileIds": [],
@@ -61,9 +65,14 @@ def retrieve(
     total = 0
     for i, r in enumerate(results, 1):
         label = _source_label(r)
-        content = _shorten(r.get("content", "").strip(), config.max_chunk_chars)
+        content = _shorten(
+            r.get("content", "").strip(), config.retrieval.max_chunk_chars
+        )
         block = f"[Chunk {i} | {label}]\n{content}"
-        if config.max_total_chars and total + len(block) > config.max_total_chars:
+        if (
+            config.retrieval.max_total_chars
+            and total + len(block) > config.retrieval.max_total_chars
+        ):
             chunks.append(f"[... {len(results) - i + 1} more chunk(s) omitted ...]")
             break
         chunks.append(block)

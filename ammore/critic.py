@@ -33,8 +33,8 @@ def _configure_dspy():
         return
     dspy.configure(
         lm=dspy.LM(
-            f"openai/{config.mistral_model}",
-            api_base=config.mistral_base_url,
+            f"openai/{config.mistral.model}",
+            api_base=config.mistral.base_url,
             api_key=get_api_key(),
         )
     )

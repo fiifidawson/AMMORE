@@ -14,7 +14,7 @@ from .config import config
 
 def is_retriever_running() -> bool:
     """Check whether something is already serving on the retriever URL."""
-    parsed = urlparse(config.retriever_url)
+    parsed = urlparse(config.mmore.retriever_url)
     health_url = f"{parsed.scheme}://{parsed.netloc}/docs"
     try:
         requests.get(health_url, timeout=1)
@@ -41,16 +41,16 @@ def auto_retriever(config_file=None):
     - On exit, terminate the subprocess we started (only if we started it).
     - `config_file` overrides the retriever config from config.yaml.
     """
-    if not config.auto_launch:
+    if not config.mmore.auto_launch:
         yield None
         return
 
     if is_retriever_running():
-        print(f"mmore retriever already running at {config.retriever_url}")
+        print(f"mmore retriever already running at {config.mmore.retriever_url}")
         yield None
         return
 
-    cfg = str(config_file) if config_file else config.retriever_config_file
+    cfg = str(config_file) if config_file else config.mmore.retriever_config_file
     cmd = [
         sys.executable,
         "-m",
@@ -59,9 +59,9 @@ def auto_retriever(config_file=None):
         "--config-file",
         cfg,
         "--host",
-        config.retriever_host,
+        config.mmore.host,
         "--port",
-        str(config.retriever_port),
+        str(config.mmore.port),
     ]
 
     log_path = Path("traces") / "retriever.log"
@@ -77,13 +77,13 @@ def auto_retriever(config_file=None):
     )
 
     try:
-        if not _wait_until_ready(config.startup_timeout):
+        if not _wait_until_ready(config.mmore.startup_timeout):
             proc.terminate()
             raise RuntimeError(
-                f"mmore retriever did not become ready within {config.startup_timeout}s. "
+                f"mmore retriever did not become ready within {config.mmore.startup_timeout}s. "
                 f"Check {log_path} for the actual error."
             )
-        print(f"Retriever ready at {config.retriever_url}\n")
+        print(f"Retriever ready at {config.mmore.retriever_url}\n")
         yield proc
     finally:
         if proc.poll() is None:

@@ -20,7 +20,7 @@ def reset_search_state() -> None:
 
 def _ctx():
     return HeadAndTailChatCompletionContext(
-        head_size=config.context_head, tail_size=config.context_tail
+        head_size=config.loop.context_head, tail_size=config.loop.context_tail
     )
 
 
@@ -96,8 +96,8 @@ def create_agents(model_client):
         "max_matches, or a reworded query) before moving on.\n"
         "Only report what the tool returns, don't invent content."
     )
-    web_ready = config.websearch_enabled and bool(os.getenv("TAVILY_API_KEY"))
-    if config.websearch_enabled and not web_ready:
+    web_ready = config.websearch.enabled and bool(os.getenv("TAVILY_API_KEY"))
+    if config.websearch.enabled and not web_ready:
         print(
             "Warning: websearch is enabled in config.yaml but TAVILY_API_KEY is not set; "
             "the Retriever will only use the corpus."
