@@ -35,6 +35,7 @@ ammore = "ammore.main:main"
 [tool.uv]
 # pillow<11 needed by mmore[process]/marker-pdf; autogen-core asks for >=11 but works with 10
 override-dependencies = ["pillow>=10.1.0,<11.0.0"]
+torch-backend = "cpu"
 
 [tool.setuptools.packages.find]
 include = ["ammore*"]
