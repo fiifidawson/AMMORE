@@ -8,22 +8,13 @@ from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermi
 from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage
 from autogen_agentchat.teams import SelectorGroupChat
 
-from .agents import create_agents, create_planner, reset_search_state
+from .agents import allow_web_search, create_agents, create_planner, reset_search_state
 from .config import config
 from .corpus import document_metadata_path, prepare_corpus
 from .document_metadata import load_title_map
 from .llm import get_model_client
 from .mmore_client import set_title_map
 from .retriever_launcher import auto_retriever
-
-
-def _corpus_overview(corpus: Path | None) -> str:
-    if corpus is None or not config.document_metadata.include_in_prompt:
-        return ""
-    path = document_metadata_path(corpus)
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8").strip()
 
 
 async def run(question: str, corpus: Path | None = None):
@@ -34,15 +25,10 @@ async def run(question: str, corpus: Path | None = None):
 
     model_client = get_model_client()
 
-    overview = _corpus_overview(corpus)
-
     # step 1: planner generates sub-questions
     print("Generating search plan...\n")
     planner = create_planner(model_client)
-    planner_task = question
-    if overview:
-        planner_task = f"{question}\n\nThe corpus contains:\n{overview}"
-    result = await planner.run(task=planner_task)
+    result = await planner.run(task=question)
     sub_questions_text = result.messages[-1].content
     print(sub_questions_text)
 
@@ -95,6 +81,8 @@ async def run(question: str, corpus: Path | None = None):
             return "Critic"
         if sender == "Critic":
             if "NEEDS_MORE" in text:
+                if "search_web_tool" in text or "web" in text.lower():
+                    allow_web_search()
                 return "Retriever"
             if "COVERAGE_OK" in text:
                 return "Writer"
@@ -123,6 +111,8 @@ async def run(question: str, corpus: Path | None = None):
                     name = getattr(item, "name", None)
                     if name is not None:
                         args = getattr(item, "arguments", "")
+                        if not args:
+                            continue
                         print(
                             f"---------- {src} (tool call) ----------\n{name}({args})\n"
                         )

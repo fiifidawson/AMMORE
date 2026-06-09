@@ -53,6 +53,39 @@ def _mark_active(corpus: Path) -> None:
     stamp.write_text(_corpus_slug(corpus), encoding="utf-8")
 
 
+def _corpus_signature(corpus: Path) -> str:
+    files = (
+        [corpus]
+        if corpus.is_file()
+        else sorted(p for p in corpus.rglob("*") if p.is_file())
+    )
+    parts = []
+    for path in files:
+        stat = path.stat()
+        name = str(path.name if corpus.is_file() else path.relative_to(corpus))
+        parts.append(f"{name}:{stat.st_size}:{stat.st_mtime_ns}")
+    return "\n".join(parts)
+
+
+def _indexed_stamp(work_dir: Path) -> Path:
+    return work_dir / "indexed_corpus.txt"
+
+
+def _local_db_exists() -> bool:
+    return Path(config.mmore.milvus_uri).exists()
+
+
+def _has_indexed_stamp(corpus: Path, work_dir: Path) -> bool:
+    stamp = _indexed_stamp(work_dir)
+    if not stamp.exists() or not _local_db_exists():
+        return False
+    return stamp.read_text(encoding="utf-8") == _corpus_signature(corpus)
+
+
+def _mark_indexed(corpus: Path, work_dir: Path) -> None:
+    _indexed_stamp(work_dir).write_text(_corpus_signature(corpus), encoding="utf-8")
+
+
 def _drop_collection_if_exists(name: str) -> None:
     if _uses_local_milvus():
         return
@@ -71,12 +104,12 @@ def _drop_collection_if_exists(name: str) -> None:
             client.close()
 
 
-def _already_indexed(collection_name: str) -> bool:
+def _already_indexed(corpus: Path, work_dir: Path, collection_name: str) -> bool:
     # Opening a milvus-lite file starts a local server in this Python process.
     # That keeps the DB locked, so the subprocess that runs `mmore index` cannot
     # open it. Only use this optimization for remote Milvus servers.
     if _uses_local_milvus():
-        return False
+        return _has_indexed_stamp(corpus, work_dir)
 
     client = None
     try:
@@ -189,7 +222,7 @@ def prepare_corpus(corpus: Path) -> Path:
     retriever_cfg = _write_retriever_cfg(work_dir, collection)
     merged = work_dir / "process_out" / "merged" / "merged_results.jsonl"
 
-    if _is_active(corpus) and _already_indexed(collection):
+    if _is_active(corpus) and _already_indexed(corpus, work_dir, collection):
         print(
             f"Corpus '{corpus.name}' already loaded into '{collection}', skipping processing."
         )
@@ -233,6 +266,7 @@ def prepare_corpus(corpus: Path) -> Path:
         check=True,
     )
 
+    _mark_indexed(corpus, work_dir)
     _mark_active(corpus)
     return retriever_cfg
 
@@ -246,7 +280,7 @@ def _prepare_from_json(json_path: Path) -> Path:
 
     retriever_cfg = _write_retriever_cfg(work_dir, collection)
 
-    if _is_active(json_path) and _already_indexed(collection):
+    if _is_active(json_path) and _already_indexed(json_path, work_dir, collection):
         print(
             f"Corpus '{json_path.name}' already loaded into '{collection}', skipping rebuild."
         )
@@ -283,6 +317,7 @@ def _prepare_from_json(json_path: Path) -> Path:
         check=True,
     )
 
+    _mark_indexed(json_path, work_dir)
     _mark_active(json_path)
     return retriever_cfg
 

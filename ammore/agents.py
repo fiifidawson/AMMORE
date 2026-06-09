@@ -1,8 +1,9 @@
 import os
-from typing import Any, Callable, List
+from typing import Annotated, Any, List
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.model_context import HeadAndTailChatCompletionContext
+from autogen_core.tools import FunctionTool
 
 from .config import config
 
@@ -10,12 +11,17 @@ from .config import config
 from .mmore_client import retrieve
 from .web_search import search_web
 
-_search_state = {"failed_streak": 0}
+_search_state = {"failed_streak": 0, "web_allowed": False}
 _MAX_FAILED_STREAK = 3
 
 
 def reset_search_state() -> None:
     _search_state["failed_streak"] = 0
+    _search_state["web_allowed"] = False
+
+
+def allow_web_search() -> None:
+    _search_state["web_allowed"] = True
 
 
 def _ctx():
@@ -52,7 +58,9 @@ def search_documents(
     Returns chunks joined by '---', or "No results found." if nothing hit.
     """
     if not query.strip():
-        return "ERROR: 'query' is required. Call again with a specific query string."
+        return _track(
+            "ERROR: 'query' is required. Call again with a specific query string."
+        )
     return _track(
         retrieve(query, max_matches=max_matches, min_similarity=min_similarity)
     )
@@ -60,18 +68,44 @@ def search_documents(
 
 def search_web_tool(query: str) -> str:
     """Tavily web search. Use when the corpus doesn't cover the topic."""
+    if not _search_state["web_allowed"]:
+        return _track(
+            "ERROR: use search_web_tool only after the Critic asks for web fallback."
+        )
     if not query.strip():
-        return "ERROR: 'query' is required. Call again with a specific query string."
+        return _track(
+            "ERROR: 'query' is required. Call again with a specific query string."
+        )
     return _track(search_web(query))
+
+
+def _search_documents_tool(
+    query: Annotated[str, "Specific non-empty search query."],
+    max_matches: Annotated[int, "Chunks to return. Use 5 normally, 10-15 if sparse."],
+    min_similarity: Annotated[
+        float, "Similarity threshold. Use -1.0 for broad search, 0.3-0.5 to filter."
+    ],
+) -> str:
+    return search_documents(query, max_matches, min_similarity)
+
+
+def _search_web_tool(
+    query: Annotated[str, "Specific non-empty web search query."],
+) -> str:
+    return search_web_tool(query)
 
 
 PLANNER_PROMPT = (
     "You are a research planner. Given a question, break it down into "
     "3-5 specific search queries to run against a document corpus.\n\n"
+    "For broad questions such as 'what topics are covered', prefer broad "
+    "content queries about subjects, themes, methods, findings, and limitations. "
+    "Do not ask for filenames, table of contents, abstracts, headings, figures, "
+    "or metadata unless the user explicitly asks for them.\n\n"
     "Output ONLY a numbered list of queries, nothing else.\n"
     "Example:\n"
-    "1. What methods are used for X?\n"
-    "2. What are the results reported for Y?\n"
+    "1. What main subjects are discussed?\n"
+    "2. What methods or concepts are covered?\n"
     "3. What limitations are mentioned?\n"
 )
 
@@ -87,7 +121,17 @@ def create_planner(model_client):
 
 
 def create_agents(model_client):
-    tools: List[Callable[..., Any]] = [search_documents]
+    tools: List[Any] = [
+        FunctionTool(
+            _search_documents_tool,
+            name="search_documents",
+            description=(
+                "Search the indexed corpus. Always pass query, max_matches, "
+                "and min_similarity."
+            ),
+            strict=True,
+        )
+    ]
     retriever_msg = (
         "You are a retrieval agent. Use search_documents to find chunks for "
         "each query.\n"
@@ -103,18 +147,23 @@ def create_agents(model_client):
             "the Retriever will only use the corpus."
         )
     if web_ready:
-        tools.append(search_web_tool)
+        tools.append(
+            FunctionTool(
+                _search_web_tool,
+                name="search_web_tool",
+                description="Search the web with Tavily. Always pass query.",
+                strict=True,
+            )
+        )
         retriever_msg = (
             "You are a retrieval agent with two tools:\n"
             "- search_documents: indexed corpus (tune max_matches / min_similarity)\n"
             "- search_web_tool: open web via Tavily\n\n"
             "Always pass a non-empty query string to either tool.\n"
-            "For each query: call search_documents first. If it returns nothing "
-            "or off-topic chunks, retry ONCE with adjusted parameters (higher "
-            "max_matches, lower min_similarity, or a reworded query). If the "
-            "second attempt still fails, you MUST call search_web_tool with the "
-            "same query before moving on -- do not give up on the corpus only. "
-            "Report everything the tools return. Don't invent content."
+            "Use search_documents for the first retrieval pass. If it returns "
+            "some relevant chunks, report them and let the Critic decide. Do not "
+            "use search_web_tool unless the Critic explicitly asks for web "
+            "fallback. Report everything the tools return. Don't invent content."
         )
 
     retriever = AssistantAgent(
@@ -135,14 +184,18 @@ def create_agents(model_client):
             "Judge whether the retrieved chunks actually address the ORIGINAL "
             "question -- not whether chunks merely exist. Chunks that are on a "
             "different topic count as no coverage.\n\n"
+            "For broad synthesis questions, chunks that directly summarize the "
+            "documents' subjects, methods, findings, or limitations can be enough "
+            "for COVERAGE_OK. Do not require document structure, metadata, or "
+            "extra details unless the user asked for them.\n\n"
             "Output EXACTLY ONE verdict on the FIRST line:\n"
             "- COVERAGE_OK only if the chunks genuinely answer the question.\n"
             "- NEEDS_MORE if the chunks are off-topic, unrelated, missing key "
             "aspects, or too sparse.\n\n"
             "Never write both verdicts in the same reply.\n"
-            "If NEEDS_MORE: list 1-3 follow-up queries. If the corpus chunks are "
-            "clearly off-topic for the question, explicitly tell the Retriever to "
-            "use search_web_tool for these queries."
+            "If NEEDS_MORE: list 1-3 follow-up queries. Use web search only when "
+            "the original question needs external knowledge and the corpus is "
+            "clearly unrelated."
         ),
         model_context=_ctx(),
     )

@@ -9,6 +9,7 @@ def get_model_client():
             model=config.mistral.model,
             api_key=get_api_key(),
             base_url=config.mistral.base_url,
+            parallel_tool_calls=False,
             model_info={
                 "vision": False,
                 "function_calling": True,

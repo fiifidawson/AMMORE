@@ -1,6 +1,12 @@
 from .config import config, get_tavily_key
 
 
+def _shorten(text: str, limit: int) -> str:
+    if limit <= 0 or len(text) <= limit:
+        return text
+    return f"{text[:limit]}\n[...truncated...]"
+
+
 def search_web(query: str = "") -> str:
     if not query.strip():
         return "ERROR: 'query' is required. Call again with a specific query string."
@@ -27,10 +33,23 @@ def search_web(query: str = "") -> str:
         return "No web results found."
 
     chunks = []
+    total = 0
     for i, r in enumerate(results, 1):
         title = r.get("title", "untitled")
         url = r.get("url", "")
-        content = r.get("content", "").strip()
-        chunks.append(f"[Web {i} | {title} | {url}]\n{content}")
+        content = _shorten(
+            r.get("content", "").strip(), config.retrieval.max_chunk_chars
+        )
+        block = f"[Web {i} | {title} | {url}]\n{content}"
+        if (
+            config.retrieval.max_total_chars
+            and total + len(block) > config.retrieval.max_total_chars
+        ):
+            chunks.append(
+                f"[... {len(results) - i + 1} more web result(s) omitted ...]"
+            )
+            break
+        chunks.append(block)
+        total += len(block)
 
     return "\n\n---\n\n".join(chunks)
