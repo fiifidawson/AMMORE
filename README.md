@@ -21,14 +21,22 @@ The user validates the sub-queries before the loop starts, useful for catching w
 ```bash
 git clone <repo-url> AMMORE
 cd AMMORE
-uv venv
+uv venv --python 3.11
 .venv\Scripts\activate         # Windows
 # source .venv/bin/activate    # Linux / macOS
 uv pip install -e .
 cp .env.example .env           # then add your Mistral API key
 ```
 
-This pulls mmore (with `process`, `index`, `api` extras) and AMMORE in one go.
+This pulls mmore with the extras AMMORE needs (`process`, `index`, `rag`, `api`) and installs AMMORE in one go.
+
+On Linux/macOS, AMMORE uses Milvus Lite automatically. On Windows, start Milvus first:
+
+```powershell
+docker compose -f docker-compose-milvus.yml up -d
+```
+
+The first corpus run downloads the embedding models and can take a few minutes. Later runs reuse the indexed corpus when the files did not change.
 
 `.env` — only the API keys:
 ```
