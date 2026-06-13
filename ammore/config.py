@@ -74,7 +74,6 @@ class WebsearchConfig:
 @dataclass
 class DocumentMetadataConfig:
     mode: str = "cheap"
-    include_in_prompt: bool = True
 
 
 @dataclass

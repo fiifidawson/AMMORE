@@ -10,11 +10,14 @@ ollama:
   model: llama3.2:3b
 
 retrieval:
-  max_matches: 3
+  max_matches: 6
   min_similarity: -1
+  max_chunk_chars: 2000
+  max_total_chars: 12000
 
 websearch:
   enabled: true   # needs TAVILY_API_KEY in .env
 
 document_metadata:
   mode: cheap   # cheap | llm | none
+

@@ -120,7 +120,37 @@ def create_planner(model_client):
     )
 
 
-def create_agents(model_client):
+def create_agents(
+    model_client, web_enabled: bool | None = None, web_only: bool = False
+):
+    if web_enabled is None:
+        web_enabled = config.websearch.enabled
+
+    if web_only:
+        allow_web_search()
+        retriever = AssistantAgent(
+            name="Retriever",
+            model_client=model_client,
+            description="Searches the web.",
+            system_message=(
+                "You are a retrieval agent. There is no document corpus. Use "
+                "search_web_tool to find sources for each query. Always pass a "
+                "non-empty query string. Report everything the tool returns, "
+                "don't invent content."
+            ),
+            tools=[
+                FunctionTool(
+                    _search_web_tool,
+                    name="search_web_tool",
+                    description="Search the web with Tavily. Always pass query.",
+                    strict=True,
+                )
+            ],
+            reflect_on_tool_use=False,
+            model_context=_ctx(),
+        )
+        return retriever, _make_critic(model_client), _make_writer(model_client)
+
     tools: List[Any] = [
         FunctionTool(
             _search_documents_tool,
@@ -140,8 +170,8 @@ def create_agents(model_client):
         "max_matches, or a reworded query) before moving on.\n"
         "Only report what the tool returns, don't invent content."
     )
-    web_ready = config.websearch.enabled and bool(os.getenv("TAVILY_API_KEY"))
-    if config.websearch.enabled and not web_ready:
+    web_ready = web_enabled and bool(os.getenv("TAVILY_API_KEY"))
+    if web_enabled and not web_ready:
         print(
             "Warning: websearch is enabled in config.yaml but TAVILY_API_KEY is not set; "
             "the Retriever will only use the corpus."
@@ -176,7 +206,11 @@ def create_agents(model_client):
         model_context=_ctx(),
     )
 
-    critic = AssistantAgent(
+    return retriever, _make_critic(model_client), _make_writer(model_client)
+
+
+def _make_critic(model_client):
+    return AssistantAgent(
         name="Critic",
         model_client=model_client,
         description="Checks if we have enough information to write the answer.",
@@ -200,30 +234,39 @@ def create_agents(model_client):
         model_context=_ctx(),
     )
 
-    writer = AssistantAgent(
+
+def _make_writer(model_client):
+    return AssistantAgent(
         name="Writer",
         model_client=model_client,
         description="Writes the final synthesis.",
         system_message=(
-            "You write a literature review STRICTLY from the retrieved chunks above. "
-            "You have no other knowledge.\n\n"
-            "Use ONLY the chunks that are actually relevant to the original question. "
-            "Off-topic chunks are fine to ignore -- you do not need every chunk to be "
-            "on-topic, as long as at least one chunk meaningfully addresses the question.\n\n"
-            "Only if NO chunk at all addresses the question (all are off-topic, empty, "
-            "or unrelated), reply EXACTLY:\n"
+            "You write a thorough literature review STRICTLY from the retrieved "
+            "chunks above. You have no other knowledge.\n\n"
+            "Use every chunk relevant to the original question; ignore off-topic "
+            "ones. Only if NO chunk at all addresses the question, reply EXACTLY:\n"
             "  The retrieved sources do not contain information answering this "
             "question. The corpus does not appear to cover this topic.\n"
-            "Then end with TERMINATE. Never fill the gap with general knowledge.\n\n"
-            "Otherwise, write:\n"
-            "## Summary\n## Key Findings\n## Gaps & Limitations\n## Sources\n\n"
-            "Every claim must be traceable to a specific on-topic chunk. Cite chunks "
-            "with their bracketed label exactly as shown, e.g. [Chunk 3 | title] or "
-            "[Web 2 | Title | URL]. Do not state anything that is not in a chunk, "
-            "and do not cite a source that is not in the chunks above.\n\n"
+            "Then end with TERMINATE. Never fill gaps with general knowledge.\n\n"
+            "Otherwise write a detailed review. Be comprehensive: cover every "
+            "relevant point in the chunks, not just a few. Use these sections:\n"
+            "## Summary -- two or three paragraphs giving the overall picture.\n"
+            "## Key Findings -- group the evidence into 3-6 themes. Start each "
+            "theme with a level-3 markdown heading, for example:\n"
+            "  ### Datasets and scale\n"
+            "Follow it with a full paragraph that explains what the sources say, "
+            "where they agree or differ, and the specifics (numbers, methods, "
+            "datasets, names). Write prose, not one-line bullets.\n"
+            "## Gaps & Limitations -- what the sources leave out or where they are "
+            "weak.\n"
+            "## Sources -- list every source you cited, one per line, with the full "
+            "label including the URL for web sources.\n\n"
+            "Every claim must trace to a specific chunk. Cite inline with the "
+            "bracketed label exactly as shown, e.g. [Chunk 3 | title] or "
+            "[Web 2 | Title | URL]. For a web source keep the whole URL in both the "
+            "inline citation and the Sources list. Do not state anything that is "
+            "not in a chunk, and do not invent sources.\n\n"
             "End with: TERMINATE"
         ),
         model_context=_ctx(),
     )
-
-    return retriever, critic, writer
