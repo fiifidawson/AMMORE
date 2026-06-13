@@ -1,0 +1,6 @@
+# first pass: 3 questions to validate the eval pipeline end-to-end
+# 2 humanitarian, 1 deliberately out-of-corpus to test web fallback
+
+What ethical tradeoffs arise when deploying an automated self-registration system in mental health wards for clinicians with low digital literacy?
+What harms have been reported when using foundation models for medical triage in low-resource settings?
+What does the Geneva Conventions say about AI in warfare?

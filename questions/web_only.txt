@@ -1,0 +1,16 @@
+# web-only comparison: AMMORE's web loop (plan -> iterative search + critic -> write)
+# vs a single Tavily search -> same Writer. No corpus. Judge domain: generic.
+# Synthesis-heavy on purpose so decomposition should gather more than one search.
+
+# --- multi-facet synthesis (loop should win) ---
+What are the main approaches to retrieval-augmented generation and how do they differ?
+How do transformer, state-space, and recurrent architectures compare for long-context modelling?
+What are the trade-offs between vector databases like Milvus, Pinecone, Qdrant, and Weaviate?
+What techniques exist to reduce hallucination in large language models, and how effective are they?
+How do different parameter-efficient fine-tuning methods (LoRA, adapters, prefix tuning) compare?
+What are the main risks and mitigation strategies discussed for AI agents that use external tools?
+How do open-weight and closed model providers differ in licensing, cost, and capability?
+
+# --- simple factual (single search should be fine) ---
+What is the context window size of recent frontier language models?
+When was the transformer architecture introduced and in what paper?

@@ -1,0 +1,22 @@
+# obtained_lit_50 corpus: 50 medical-AI / foundation-model papers. Judge domain:
+# humanitarian (adds ethical_awareness).
+
+# --- specific-paper ---
+What tasks can a generalist biomedical vision-language foundation model perform?
+How is a foundation model for computational pathology trained and evaluated?
+
+# --- cross-paper synthesis ---
+What ethical risks are raised when deploying medical foundation models?
+How do these papers address patient data privacy in healthcare AI?
+What biases have been identified in medical AI foundation models?
+
+# --- broad overview ---
+What are the main application domains of the foundation models in this corpus?
+What evaluation approaches are used for medical foundation models?
+
+# --- ethical / governance ---
+What governance or oversight mechanisms are proposed for medical foundation models?
+What tradeoffs arise between model performance and patient safety in clinical AI?
+
+# --- out-of-corpus (refusal / web fallback) ---
+What does the Geneva Conventions say about the use of AI in warfare?

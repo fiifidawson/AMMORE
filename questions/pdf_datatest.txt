@@ -1,0 +1,20 @@
+# pdf_datatest corpus: 5 vision-language papers (CLIP, LLaVA, VeCLIP, Molmo/PixMo,
+# interpretive-evaluation framework). Judge domain: generic.
+
+# --- specific-paper ---
+What datasets does CLIP use and how are they constructed?
+How does VeCLIP improve CLIP training?
+What is visual instruction tuning in LLaVA?
+How was the PixMo dataset collected for training Molmo?
+
+# --- cross-paper synthesis ---
+How do CLIP, LLaVA, and Molmo differ in their training data and objectives?
+What role does the quality of image-text data play across these models?
+
+# --- broad overview ---
+What are the main themes covered across these papers?
+What evaluation methods are used for the vision-language models in this corpus?
+
+# --- out-of-corpus (refusal / web fallback) ---
+What are the main provisions of the GDPR?
+What is the basic principle behind quantum error correction?

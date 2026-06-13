@@ -1,0 +1,24 @@
+# medical imaging AI corpus (~50 arXiv PDFs). Judge domain: humanitarian (medical/ethics).
+# Synthesis-heavy on purpose: answers are scattered across many papers, so a single
+# retrieval pass gets only a fraction and the loop's iterative retrieval should win.
+
+# --- cross-paper synthesis ---
+What deep learning architectures recur across the medical image segmentation methods in this corpus, and how do they differ?
+What sources of bias and fairness concerns are identified across these medical imaging papers?
+How do the foundation models for medical imaging differ in their pretraining and adaptation strategies?
+What approaches to limited labeled data (self-supervised, federated, augmentation) appear across the corpus?
+What evaluation metrics and benchmarks are commonly used across these medical imaging studies?
+How do these papers address patient privacy and data governance when training on medical images?
+What clinical deployment and generalization challenges are raised across the corpus?
+
+What imaging modalities (MRI, CT, X-ray, ultrasound) are studied across the corpus and for which tasks?
+How do the papers handle annotation cost and the need for expert-labeled data?
+What transformer or attention-based methods appear across these medical imaging papers?
+What strategies for generalization across hospitals, scanners, or domains are proposed?
+
+# --- broad overview ---
+What are the main research themes and open problems in medical imaging AI across this corpus?
+
+# --- out-of-corpus (refusal / web fallback) ---
+What does the EU AI Act say about high-risk medical AI systems?
+What are the WHO guidelines for the use of AI in health?
