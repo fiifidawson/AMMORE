@@ -213,3 +213,17 @@ milvus.db
 *.db.lock
 obtained_lit*.json
 traces/
+ui/node_modules/
+ui/.next/
+uploads/
+
+# local tooling / report scratch, not for the repo
+.claude/
+ui/AGENTS.md
+ui/CLAUDE.md
+current_latex/
+latex.txt
+eval_notebook.ipynb
+
+# the lib/ rule above also catches the UI api client; keep it
+!ui/lib/

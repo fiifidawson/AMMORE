@@ -27,6 +27,18 @@ class MistralConfig:
 
 
 @dataclass
+class OpenAIConfig:
+    model: str = "gpt-4o-mini"
+    base_url: str = ""  # empty -> OpenAI default endpoint
+
+
+@dataclass
+class KimiConfig:
+    model: str = "kimi-k2.6"
+    base_url: str = "https://api.moonshot.ai/v1"
+
+
+@dataclass
 class OllamaConfig:
     model: str = "llama3.2:3b"
     base_url: str = "http://localhost:11434"
@@ -80,6 +92,8 @@ class DocumentMetadataConfig:
 class Config:
     provider: str = "mistral"
     mistral: MistralConfig = field(default_factory=MistralConfig)
+    openai: OpenAIConfig = field(default_factory=OpenAIConfig)
+    kimi: KimiConfig = field(default_factory=KimiConfig)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
     mmore: MmoreConfig = field(default_factory=MmoreConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
@@ -110,6 +124,20 @@ def get_api_key() -> str:
     key = os.getenv("MISTRAL_API_KEY")
     if not key:
         raise ValueError("MISTRAL_API_KEY not set in .env")
+    return key
+
+
+def get_openai_key() -> str:
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise ValueError("OPENAI_API_KEY not set in .env")
+    return key
+
+
+def get_kimi_key() -> str:
+    key = os.getenv("KIMI_API_KEY")
+    if not key:
+        raise ValueError("KIMI_API_KEY not set in .env")
     return key
 
 

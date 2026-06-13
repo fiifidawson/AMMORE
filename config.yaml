@@ -1,10 +1,13 @@
 # AMMORE configuration. Defaults live in ammore/config.py — override only what you need.
 # API keys go in .env.
 
-provider: mistral   # mistral | ollama
+provider: openai   # mistral | openai | ollama
 
 mistral:
   model: mistral-small-latest
+
+openai:
+  model: gpt-4o-mini   # needs OPENAI_API_KEY in .env
 
 ollama:
   model: llama3.2:3b
