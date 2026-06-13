@@ -96,17 +96,22 @@ def _search_web_tool(
 
 
 PLANNER_PROMPT = (
-    "You are a research planner. Given a question, break it down into "
-    "3-5 specific search queries to run against a document corpus.\n\n"
-    "For broad questions such as 'what topics are covered', prefer broad "
-    "content queries about subjects, themes, methods, findings, and limitations. "
-    "Do not ask for filenames, table of contents, abstracts, headings, figures, "
-    "or metadata unless the user explicitly asks for them.\n\n"
+    "You are a research planner. Given a question, break it down into 4-6 "
+    "specific search queries to run against a document corpus.\n\n"
+    "Make the queries cover DIFFERENT facets of the question so that together "
+    "they retrieve comprehensive evidence -- distinct sub-topics, methods, "
+    "datasets, populations, or viewpoints the question touches. For a "
+    "comparison or synthesis question, write one query per thing being compared "
+    "or per theme, so no aspect is missed.\n"
+    "Prefer broad content queries about subjects, themes, methods, findings, "
+    "and limitations. Do not ask for filenames, table of contents, headings, or "
+    "metadata unless the user explicitly asks for them.\n\n"
     "Output ONLY a numbered list of queries, nothing else.\n"
     "Example:\n"
-    "1. What main subjects are discussed?\n"
-    "2. What methods or concepts are covered?\n"
-    "3. What limitations are mentioned?\n"
+    "1. What main subjects or tasks are addressed?\n"
+    "2. What methods or approaches are used?\n"
+    "3. What datasets or populations are studied?\n"
+    "4. What limitations or open problems are noted?\n"
 )
 
 
@@ -218,14 +223,19 @@ def _make_critic(model_client):
             "Judge whether the retrieved chunks actually address the ORIGINAL "
             "question -- not whether chunks merely exist. Chunks that are on a "
             "different topic count as no coverage.\n\n"
-            "For broad synthesis questions, chunks that directly summarize the "
-            "documents' subjects, methods, findings, or limitations can be enough "
-            "for COVERAGE_OK. Do not require document structure, metadata, or "
-            "extra details unless the user asked for them.\n\n"
+            "For broad synthesis or comparison questions, chunks that cover the "
+            "relevant subjects, methods, findings, or limitations across the "
+            "documents are enough for COVERAGE_OK -- the answer is built by "
+            "combining them, so do NOT require a single chunk to answer the whole "
+            "question, and do not require document structure or metadata.\n\n"
             "Output EXACTLY ONE verdict on the FIRST line:\n"
-            "- COVERAGE_OK only if the chunks genuinely answer the question.\n"
-            "- NEEDS_MORE if the chunks are off-topic, unrelated, missing key "
-            "aspects, or too sparse.\n\n"
+            "- COVERAGE_OK if the chunks together let the Writer answer the "
+            "question, even partially.\n"
+            "- NEEDS_MORE only if the chunks are off-topic, unrelated, or miss a "
+            "key aspect that a targeted follow-up query could still find in the "
+            "corpus.\n\n"
+            "Prefer COVERAGE_OK once there is usable on-topic material; reserve "
+            "NEEDS_MORE for genuinely thin or off-topic results.\n"
             "Never write both verdicts in the same reply.\n"
             "If NEEDS_MORE: list 1-3 follow-up queries. Use web search only when "
             "the original question needs external knowledge and the corpus is "
@@ -235,38 +245,46 @@ def _make_critic(model_client):
     )
 
 
+# shared by the agentic Writer and the single-pass baseline so the only
+# difference between them is the loop, not the writing instructions
+WRITER_PROMPT = (
+    "You write a thorough literature review STRICTLY from the retrieved "
+    "chunks. You have no other knowledge.\n\n"
+    "Use every chunk relevant to the question's topic; ignore off-topic ones. "
+    "For comparison or synthesis questions, build the answer by combining what "
+    "the relevant chunks say -- a single chunk need not answer the whole "
+    "question on its own. Refuse ONLY if no chunk is relevant to the topic at "
+    "all, replying EXACTLY:\n"
+    "  The retrieved sources do not contain information answering this "
+    "question. The corpus does not appear to cover this topic.\n"
+    "Then end with TERMINATE. Never fill gaps with general knowledge.\n\n"
+    "Otherwise write a detailed review. Be comprehensive: cover every "
+    "relevant point in the chunks, not just a few. Use these sections:\n"
+    "## Summary -- two or three paragraphs giving the overall picture.\n"
+    "## Key Findings -- group the evidence into 3-6 themes. Start each "
+    "theme with a level-3 markdown heading, for example:\n"
+    "  ### Datasets and scale\n"
+    "Follow it with a full paragraph that explains what the sources say, "
+    "where they agree or differ, and the specifics (numbers, methods, "
+    "datasets, names). Write prose, not one-line bullets.\n"
+    "## Gaps & Limitations -- what the sources leave out or where they are "
+    "weak.\n"
+    "## Sources -- list every source you cited, one per line, with the full "
+    "label including the URL for web sources.\n\n"
+    "Every claim must trace to a specific chunk. Cite inline with the "
+    "bracketed label exactly as shown, e.g. [Chunk 3 | title] or "
+    "[Web 2 | Title | URL]. For a web source keep the whole URL in both the "
+    "inline citation and the Sources list. Do not state anything that is "
+    "not in a chunk, and do not invent sources.\n\n"
+    "End with: TERMINATE"
+)
+
+
 def _make_writer(model_client):
     return AssistantAgent(
         name="Writer",
         model_client=model_client,
         description="Writes the final synthesis.",
-        system_message=(
-            "You write a thorough literature review STRICTLY from the retrieved "
-            "chunks above. You have no other knowledge.\n\n"
-            "Use every chunk relevant to the original question; ignore off-topic "
-            "ones. Only if NO chunk at all addresses the question, reply EXACTLY:\n"
-            "  The retrieved sources do not contain information answering this "
-            "question. The corpus does not appear to cover this topic.\n"
-            "Then end with TERMINATE. Never fill gaps with general knowledge.\n\n"
-            "Otherwise write a detailed review. Be comprehensive: cover every "
-            "relevant point in the chunks, not just a few. Use these sections:\n"
-            "## Summary -- two or three paragraphs giving the overall picture.\n"
-            "## Key Findings -- group the evidence into 3-6 themes. Start each "
-            "theme with a level-3 markdown heading, for example:\n"
-            "  ### Datasets and scale\n"
-            "Follow it with a full paragraph that explains what the sources say, "
-            "where they agree or differ, and the specifics (numbers, methods, "
-            "datasets, names). Write prose, not one-line bullets.\n"
-            "## Gaps & Limitations -- what the sources leave out or where they are "
-            "weak.\n"
-            "## Sources -- list every source you cited, one per line, with the full "
-            "label including the URL for web sources.\n\n"
-            "Every claim must trace to a specific chunk. Cite inline with the "
-            "bracketed label exactly as shown, e.g. [Chunk 3 | title] or "
-            "[Web 2 | Title | URL]. For a web source keep the whole URL in both the "
-            "inline citation and the Sources list. Do not state anything that is "
-            "not in a chunk, and do not invent sources.\n\n"
-            "End with: TERMINATE"
-        ),
+        system_message=WRITER_PROMPT,
         model_context=_ctx(),
     )
