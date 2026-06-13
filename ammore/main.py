@@ -1,18 +1,14 @@
 import argparse
 import asyncio
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Sequence
 
-from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
-from autogen_agentchat.messages import BaseAgentEvent, BaseChatMessage
-from autogen_agentchat.teams import SelectorGroupChat
-
-from .agents import allow_web_search, create_agents, create_planner, reset_search_state
-from .config import config
+from .agents import create_planner, reset_search_state
 from .corpus import document_metadata_path, prepare_corpus
 from .document_metadata import load_title_map
 from .llm import get_model_client
+from .loop import build_team, task_text
 from .mmore_client import set_title_map
 from .retriever_launcher import auto_retriever
 
@@ -49,53 +45,8 @@ async def run(question: str, corpus: Path | None = None):
     print("\nStarting retrieval loop...\n")
 
     reset_search_state()
-    retriever, critic, writer = create_agents(model_client)
-
-    task = (
-        f"Original question: {question}\n\n"
-        f"Search plan:\n{approved_plan}\n\n"
-        f"Retriever: run each query above using search_documents."
-    )
-
-    termination = TextMentionTermination("TERMINATE") | MaxMessageTermination(
-        config.loop.max_messages
-    )
-
-    def selector(messages: Sequence[BaseAgentEvent | BaseChatMessage]) -> str | None:
-        if len(messages) <= 1:
-            return "Retriever"
-
-        last = messages[-1]
-        sender = getattr(last, "source", None)
-        text = (
-            last.content
-            if hasattr(last, "content") and isinstance(last.content, str)
-            else ""
-        )
-
-        # force the Writer near the cap so we always get a synthesis
-        if len(messages) >= config.loop.max_messages - 2 and sender != "Writer":
-            return "Writer"
-
-        if sender == "Retriever":
-            return "Critic"
-        if sender == "Critic":
-            if "NEEDS_MORE" in text:
-                if "search_web_tool" in text or "web" in text.lower():
-                    allow_web_search()
-                return "Retriever"
-            if "COVERAGE_OK" in text:
-                return "Writer"
-            return "Retriever"
-
-        return None
-
-    team = SelectorGroupChat(
-        participants=[retriever, critic, writer],
-        model_client=model_client,
-        selector_func=selector,
-        termination_condition=termination,
-    )
+    team = build_team(model_client)
+    task = task_text(question, approved_plan)
 
     collected = []
 
@@ -144,6 +95,10 @@ def save_output(question, messages):
 
 
 def main():
+    # piped stdout on Windows defaults to cp1252 and crashes on unicode in chunks
+    if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(prog="ammore")
     parser.add_argument("question", help="research question to investigate")
     parser.add_argument(
