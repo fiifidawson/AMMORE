@@ -81,6 +81,24 @@ python -m ammore "your question"
 
 AMMORE auto-launches the mmore retriever as a subprocess. Synthesis is saved to `outputs/review_<timestamp>.md`.
 
+## Web UI
+
+There is also a web interface. Two terminals:
+
+```bash
+# terminal 1: the API server (same venv as the CLI)
+python -m ammore.server
+
+# terminal 2: the frontend (needs Node 18+; npm install on first run)
+cd ui
+npm run dev
+```
+
+Then open http://localhost:3000. The flow mirrors the CLI: pick a corpus (path
+or file upload), ask a question, edit the generated sub-questions, watch the
+agents work, read the review. Past reviews from `outputs/` show up in the
+sidebar. The CLI keeps working independently.
+
 ## Project structure
 
 ```
