@@ -1,0 +1,10 @@
+How does the ResNet-34 with a lightweight decoder segment fetal brain structures, and how efficient is it?
+What does KM-UNet combine, and for which medical imaging task?
+What is the Learn2Reg challenge, and what registration tasks and dataset does it provide?
+How does multiGradICON work as a foundation model for multimodal medical image registration?
+What architecture does DSU-Net use for breast lesion segmentation in mammography?
+How does LLaMA-XR use LLaMA and QLoRA fine-tuning for radiology report generation?
+How does Neighboring Slice Noise2Noise denoise a medical image from a single noisy volume?
+How does 3D-GlioPREDICT use latent diffusion to predict post-radiotherapy brain MRI?
+What does the DeepReg toolkit provide for deep-learning medical image registration?
+How does the self-supervised contrastive learning method classify cardiac MR sequences?
