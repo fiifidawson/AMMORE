@@ -7,20 +7,23 @@ mistral:
   model: mistral-small-latest
 
 openai:
-  model: gpt-4o-mini   # needs OPENAI_API_KEY in .env
+  model: gpt-4o-mini   # needs OPENAI_API_KEY in .env; gpt-5.5 for the spot-check
 
 ollama:
   model: llama3.2:3b
 
 retrieval:
-  max_matches: 6
+  max_matches: 8
   min_similarity: -1
   max_chunk_chars: 2000
-  max_total_chars: 12000
+  max_total_chars: 16000
+
+loop:
+  context_mode: full   # full (OpenAI, Writer sees all chunks) | headtail (small models)
 
 websearch:
-  enabled: true   # needs TAVILY_API_KEY in .env
+  enabled: false   # needs TAVILY_API_KEY in .env
 
 document_metadata:
-  mode: cheap   # cheap | llm | none
+  mode: llm   # cheap | llm | none
 

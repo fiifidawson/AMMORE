@@ -1,4 +1,5 @@
 from .config import config, get_tavily_key
+from .mmore_client import cite_id
 
 
 def _shorten(text: str, limit: int) -> str:
@@ -40,7 +41,8 @@ def search_web(query: str = "") -> str:
         content = _shorten(
             r.get("content", "").strip(), config.retrieval.max_chunk_chars
         )
-        block = f"[Web {i} | {title} | {url}]\n{content}"
+        gid = cite_id(f"web:{url}")
+        block = f"[Web {gid} | {title} | {url}]\n{content}"
         if (
             config.retrieval.max_total_chars
             and total + len(block) > config.retrieval.max_total_chars

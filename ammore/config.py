@@ -74,6 +74,7 @@ class LoopConfig:
     max_messages: int = 24
     context_head: int = 2
     context_tail: int = 8
+    context_mode: str = "headtail"  # "headtail" (small models) | "full" (large context)
 
 
 @dataclass
