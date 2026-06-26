@@ -2,13 +2,16 @@ import os
 from typing import Annotated, Any, List
 
 from autogen_agentchat.agents import AssistantAgent
-from autogen_core.model_context import HeadAndTailChatCompletionContext
+from autogen_core.model_context import (
+    HeadAndTailChatCompletionContext,
+    UnboundedChatCompletionContext,
+)
 from autogen_core.tools import FunctionTool
 
 from .config import config
 
 # from .critic import CriticAgent  # diagnostic: temporarily reverted to AssistantAgent Critic
-from .mmore_client import retrieve
+from .mmore_client import reset_citations, retrieve
 from .web_search import search_web
 
 _search_state = {"failed_streak": 0, "web_allowed": False}
@@ -18,6 +21,7 @@ _MAX_FAILED_STREAK = 3
 def reset_search_state() -> None:
     _search_state["failed_streak"] = 0
     _search_state["web_allowed"] = False
+    reset_citations()
 
 
 def allow_web_search() -> None:
@@ -25,6 +29,11 @@ def allow_web_search() -> None:
 
 
 def _ctx():
+    # Small models (mistral) overflow their context, so keep the head/tail view.
+    # Large-context models (OpenAI) can hold the whole loop, which lets the Writer
+    # see every retrieved chunk instead of only the last few messages.
+    if config.loop.context_mode == "full":
+        return UnboundedChatCompletionContext()
     return HeadAndTailChatCompletionContext(
         head_size=config.loop.context_head, tail_size=config.loop.context_tail
     )
@@ -248,34 +257,50 @@ def _make_critic(model_client):
 # shared by the agentic Writer and the single-pass baseline so the only
 # difference between them is the loop, not the writing instructions
 WRITER_PROMPT = (
+    "Maximize information density: every sentence must carry a concrete fact (a "
+    "named method, dataset, metric, or number from the chunks). Cut filler, "
+    "hedging, and meta-commentary; prefer precise specifics over generalities.\n\n"
     "You write a thorough literature review STRICTLY from the retrieved "
     "chunks. You have no other knowledge.\n\n"
-    "Use every chunk relevant to the question's topic; ignore off-topic ones. "
-    "For comparison or synthesis questions, build the answer by combining what "
-    "the relevant chunks say -- a single chunk need not answer the whole "
+    "Use every chunk relevant to the question's topic and ignore off-topic "
+    "ones. For comparison or synthesis questions, build the answer by combining "
+    "what the relevant chunks say; a single chunk need not answer the whole "
     "question on its own. Refuse ONLY if no chunk is relevant to the topic at "
     "all, replying EXACTLY:\n"
     "  The retrieved sources do not contain information answering this "
     "question. The corpus does not appear to cover this topic.\n"
     "Then end with TERMINATE. Never fill gaps with general knowledge.\n\n"
-    "Otherwise write a detailed review. Be comprehensive: cover every "
-    "relevant point in the chunks, not just a few. Use these sections:\n"
-    "## Summary -- two or three paragraphs giving the overall picture.\n"
-    "## Key Findings -- group the evidence into 3-6 themes. Start each "
-    "theme with a level-3 markdown heading, for example:\n"
-    "  ### Datasets and scale\n"
-    "Follow it with a full paragraph that explains what the sources say, "
-    "where they agree or differ, and the specifics (numbers, methods, "
-    "datasets, names). Write prose, not one-line bullets.\n"
-    "## Gaps & Limitations -- what the sources leave out or where they are "
-    "weak.\n"
-    "## Sources -- list every source you cited, one per line, with the full "
-    "label including the URL for web sources.\n\n"
-    "Every claim must trace to a specific chunk. Cite inline with the "
-    "bracketed label exactly as shown, e.g. [Chunk 3 | title] or "
-    "[Web 2 | Title | URL]. For a web source keep the whole URL in both the "
-    "inline citation and the Sources list. Do not state anything that is "
-    "not in a chunk, and do not invent sources.\n\n"
+    "Otherwise write a long, in-depth review. Do not be superficial or concise: "
+    "a thorough review over a corpus this size should run to several pages. "
+    "Cover every relevant chunk, not just the clearest few, so a reader need not "
+    "open the papers to understand what they did and found. Use these "
+    "sections:\n"
+    "## Summary\n"
+    "Two or three paragraphs giving the overall picture: what the body of work "
+    "addresses, the main approaches, and where the evidence converges or "
+    "conflicts.\n"
+    "## Key Findings\n"
+    "Group the evidence into 3 to 6 themes. Start each theme with a level-3 "
+    "markdown heading, for example '### Datasets and scale'. Then write at "
+    "least three full paragraphs per theme, more when the chunks support it. Go "
+    "deep: give the specific methods, datasets, sample sizes, and quantitative "
+    "results (accuracy, sensitivity, AUC, and so on) the sources report; "
+    "explain how and why the approaches differ; say where studies agree, "
+    "disagree, or contradict each other; and attach the caveat or limitation "
+    "that comes with each finding. Attribute every point to its source. Write "
+    "flowing prose, not one-line bullets, and never settle for a single "
+    "sentence on a theme.\n"
+    "## Gaps & Limitations\n"
+    "What the sources leave out, where the evidence is thin, and what a reader "
+    "should be cautious about.\n"
+    "## Sources\n"
+    "List every source you cited, one per line, with the full label including "
+    "the URL for web sources.\n\n"
+    "Every claim must trace to a specific chunk. Cite inline with the bracketed "
+    "label exactly as shown, e.g. [Chunk 3 | title] or [Web 2 | Title | URL]. "
+    "For a web source keep the whole URL in both the inline citation and the "
+    "Sources list. Do not state anything that is not in a chunk, and do not "
+    "invent sources.\n\n"
     "End with: TERMINATE"
 )
 

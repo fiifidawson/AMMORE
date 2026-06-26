@@ -39,7 +39,11 @@ def get_model_client():
         kwargs = {"model": config.openai.model, "api_key": get_openai_key()}
         if config.openai.base_url:
             kwargs["base_url"] = config.openai.base_url
-        return OpenAIChatCompletionClient(**kwargs)
+        try:
+            return OpenAIChatCompletionClient(**kwargs)
+        except ValueError:
+            # newer models (gpt-5.x) aren't in autogen's model table yet
+            return OpenAIChatCompletionClient(model_info=_OPENAI_COMPAT_INFO, **kwargs)
 
     elif config.provider == "ollama":
         from autogen_ext.models.ollama import OllamaChatCompletionClient

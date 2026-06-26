@@ -10,9 +10,12 @@ from pathlib import Path
 
 from .agents import create_planner, reset_search_state
 from .baseline import run_baseline, run_baseline_web
-from .corpus import prepare_corpus
+from .config import config
+from .corpus import document_metadata_path, prepare_corpus
+from .document_metadata import load_title_map
 from .llm import get_model_client
 from .loop import build_team, task_text
+from .mmore_client import set_title_map
 from .retriever_launcher import auto_retriever
 
 
@@ -105,11 +108,13 @@ def main():
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     if args.web_only:
+        config.websearch.enabled = True  # --web-only implies web search
         asyncio.run(collect(qs, args.out, web_only=True))
     else:
         if args.corpus is None:
             raise SystemExit("--corpus is required unless --web-only")
         retriever_cfg = prepare_corpus(args.corpus)
+        set_title_map(load_title_map(document_metadata_path(args.corpus).parent))
         with auto_retriever(retriever_cfg):
             asyncio.run(collect(qs, args.out))
 

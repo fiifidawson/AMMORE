@@ -6,10 +6,35 @@ from .config import config
 
 _TITLE_MAP: dict = {}
 
+# stable citation numbering for one answer. retrieve() and search_web() both
+# number their results, and the loop calls them many times, so a per-call
+# counter makes [Chunk 3] mean different sources across rounds. This keeps one
+# global number per distinct source so citations don't collide.
+_cite_ids: dict = {}
+
+# the chunk blocks actually shown to the Writer in one answer, captured so a
+# reference-grounded judge can score faithfulness against the real sources.
+_seen_chunks: list = []
+
 
 def set_title_map(mapping: dict) -> None:
     global _TITLE_MAP
     _TITLE_MAP = mapping or {}
+
+
+def reset_citations() -> None:
+    _cite_ids.clear()
+    _seen_chunks.clear()
+
+
+def get_seen_chunks() -> str:
+    return "\n\n".join(_seen_chunks)
+
+
+def cite_id(key: str) -> int:
+    if key not in _cite_ids:
+        _cite_ids[key] = len(_cite_ids) + 1
+    return _cite_ids[key]
 
 
 def _source_label(r: dict) -> str:
@@ -68,7 +93,8 @@ def retrieve(
         content = _shorten(
             r.get("content", "").strip(), config.retrieval.max_chunk_chars
         )
-        block = f"[Chunk {i} | {label}]\n{content}"
+        gid = cite_id(f"chunk:{r.get('fileId', '')}:{content[:120]}")
+        block = f"[Chunk {gid} | {label}]\n{content}"
         if (
             config.retrieval.max_total_chars
             and total + len(block) > config.retrieval.max_total_chars
@@ -76,6 +102,7 @@ def retrieve(
             chunks.append(f"[... {len(results) - i + 1} more chunk(s) omitted ...]")
             break
         chunks.append(block)
+        _seen_chunks.append(block)
         total += len(block)
 
     return "\n\n---\n\n".join(chunks)

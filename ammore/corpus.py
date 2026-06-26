@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 import sys
@@ -125,6 +126,32 @@ def _already_indexed(corpus: Path, work_dir: Path, collection_name: str) -> bool
             client.close()
 
 
+def _run_index(index_cfg: Path) -> None:
+    # Inserting into a freshly-created Milvus collection can segfault natively on
+    # Windows (the pymilvus sparse-vector path); the failed attempt still creates
+    # the empty collection, so a retry appends to the now-existing one and works.
+    for attempt in (1, 2, 3):
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "mmore",
+                    "index",
+                    "--config-file",
+                    str(index_cfg),
+                ],
+                check=True,
+            )
+            return
+        except subprocess.CalledProcessError:
+            if attempt == 3:
+                raise
+            print(
+                f"  index attempt {attempt} crashed (fresh-collection insert); retrying..."
+            )
+
+
 def _write_process_cfg(corpus: Path, work_dir: Path) -> Path:
     cfg = {
         "data_path": str(corpus.resolve()),
@@ -232,12 +259,24 @@ def prepare_corpus(corpus: Path) -> Path:
 
     _drop_collection_if_exists(collection)
 
-    print(f"Processing corpus at {corpus}...")
-    process_cfg = _write_process_cfg(corpus, work_dir)
-    subprocess.run(
-        [sys.executable, "-m", "mmore", "process", "--config-file", str(process_cfg)],
-        check=True,
-    )
+    # Re-extracting many PDFs spawns one worker per CPU and can exhaust memory.
+    # When the extraction output is already cached, reuse it and only re-chunk/index.
+    if os.getenv("AMMORE_REUSE_EXTRACTION") == "1" and merged.exists():
+        print(f"Reusing cached extraction at {merged} (skipping mmore process)")
+    else:
+        print(f"Processing corpus at {corpus}...")
+        process_cfg = _write_process_cfg(corpus, work_dir)
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "mmore",
+                "process",
+                "--config-file",
+                str(process_cfg),
+            ],
+            check=True,
+        )
 
     overview = build_overview(merged, work_dir)
     if overview is not None:
@@ -261,10 +300,7 @@ def prepare_corpus(corpus: Path) -> Path:
 
     print("Indexing chunks into Milvus...")
     index_cfg = _write_index_cfg(work_dir, collection)
-    subprocess.run(
-        [sys.executable, "-m", "mmore", "index", "--config-file", str(index_cfg)],
-        check=True,
-    )
+    _run_index(index_cfg)
 
     _mark_indexed(corpus, work_dir)
     _mark_active(corpus)
@@ -312,10 +348,7 @@ def _prepare_from_json(json_path: Path) -> Path:
 
     print("Indexing chunks into Milvus...")
     index_cfg = _write_index_cfg(work_dir, collection)
-    subprocess.run(
-        [sys.executable, "-m", "mmore", "index", "--config-file", str(index_cfg)],
-        check=True,
-    )
+    _run_index(index_cfg)
 
     _mark_indexed(json_path, work_dir)
     _mark_active(json_path)

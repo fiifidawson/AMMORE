@@ -1,0 +1,10 @@
+What deep learning architectures recur across the medical image segmentation methods in this corpus, and how do they differ?
+What sources of bias and fairness concerns are identified across these medical imaging papers?
+How do the foundation models for medical imaging differ in their pretraining and adaptation strategies?
+What approaches to limited labeled data (self-supervised, federated, augmentation) appear across the corpus?
+What evaluation metrics and benchmarks are commonly used across these medical imaging studies?
+What clinical deployment and generalization challenges are raised across the corpus?
+What imaging modalities (MRI, CT, X-ray, ultrasound) are studied across the corpus and for which tasks?
+What transformer or attention-based methods appear across these medical imaging papers?
+What strategies for generalization across hospitals, scanners, or domains are proposed?
+What are the main research themes and open problems in medical imaging AI across this corpus?
