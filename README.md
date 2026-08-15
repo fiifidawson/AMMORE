@@ -30,11 +30,18 @@ cp .env.example .env           # then add your API keys
 
 This pulls mmore with the extras AMMORE needs (`process`, `index`, `rag`, `api`) and installs AMMORE in one go.
 
-On Linux/macOS, AMMORE uses Milvus Lite automatically. On Windows, start Milvus first:
+On Linux/macOS, AMMORE uses Milvus Lite automatically. On Windows, milvus-lite has no
+wheel, so AMMORE talks to a Milvus server at `127.0.0.1:19530` instead. Start it first:
 
 ```powershell
 docker compose -f docker-compose-milvus.yml up -d
+docker ps --filter "name=milvus"    # wait for milvus-standalone to report (healthy)
 ```
+
+Milvus needs ~90s before it reports healthy; starting a run earlier fails with
+`Fail connecting to server on 127.0.0.1:19530`. The `my_db` database is created on
+first run if the server does not have it yet, so a fresh container needs no extra setup.
+Compose keeps its data in `volumes/` (gitignored) — deleting it resets the index.
 
 The first corpus run downloads the embedding models and can take a few minutes. Later runs reuse the indexed corpus when the files did not change.
 

@@ -12,7 +12,10 @@ dependencies = [
     "autogen-agentchat>=0.7.0",
     "autogen-ext[openai,ollama]",
     "dspy>=2.5",
-    "mmore[process,index,rag,api]",
+    # mmore 2.0.0 requires milvus-lite==2.5.1 directly and unmarkered, which has no
+    # Windows wheel -> `uv sync` cannot resolve on Windows. 1.2.x pulls it through
+    # pymilvus[milvus-lite], whose marker already excludes win32.
+    "mmore[process,index,rag,api]<2",
     "milvus-lite<3; platform_system != 'Windows'",
     "pymilvus",
     "python-dotenv",
@@ -34,7 +37,13 @@ ammore = "ammore.main:main"
 
 [tool.uv]
 # pillow<11 needed by mmore[process]/marker-pdf; autogen-core asks for >=11 but works with 10
-override-dependencies = ["pillow>=10.1.0,<11.0.0"]
+# mmore >=1.2.4 requires milvus-lite directly without a platform marker, and milvus-lite
+# ships no Windows wheel -> uv cannot resolve here. Re-attach the marker upstream forgot;
+# AMMORE already talks to a Milvus server on Windows, so nothing is lost.
+override-dependencies = [
+    "pillow>=10.1.0,<11.0.0",
+    "milvus-lite==2.5.1; sys_platform != 'win32'",
+]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]

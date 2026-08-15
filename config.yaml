@@ -1,7 +1,7 @@
 # AMMORE configuration. Defaults live in ammore/config.py — override only what you need.
 # API keys go in .env.
 
-provider: openai   # mistral | openai | ollama
+provider: mistral   # mistral | openai | ollama
 
 mistral:
   model: mistral-small-latest
@@ -22,7 +22,7 @@ loop:
   context_mode: full   # full (OpenAI, Writer sees all chunks) | headtail (small models)
 
 websearch:
-  enabled: false   # needs TAVILY_API_KEY in .env
+  enabled: true   # needs TAVILY_API_KEY in .env
 
 document_metadata:
   mode: llm   # cheap | llm | none

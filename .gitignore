@@ -216,6 +216,7 @@ traces/
 ui/node_modules/
 ui/.next/
 uploads/
+volumes/
 
 # local tooling / report scratch, not for the repo
 .claude/

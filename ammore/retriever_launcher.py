@@ -1,7 +1,6 @@
 """Spawn the mmore retriever as a subprocess if it's not already running."""
 
 import subprocess
-import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -10,6 +9,7 @@ from urllib.parse import urlparse
 import requests
 
 from .config import config
+from .splade_compat import bootstrap_cmd
 
 
 def is_retriever_running() -> bool:
@@ -51,10 +51,7 @@ def auto_retriever(config_file=None):
         return
 
     cfg = str(config_file) if config_file else config.mmore.retriever_config_file
-    cmd = [
-        sys.executable,
-        "-m",
-        "mmore",
+    cmd = bootstrap_cmd(
         "retrieve",
         "--config-file",
         cfg,
@@ -62,7 +59,7 @@ def auto_retriever(config_file=None):
         config.mmore.host,
         "--port",
         str(config.mmore.port),
-    ]
+    )
 
     log_path = Path("traces") / "retriever.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)

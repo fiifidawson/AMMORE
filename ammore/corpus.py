@@ -11,6 +11,7 @@ from pymilvus import MilvusClient
 
 from .config import config
 from .document_metadata import build_overview
+from .splade_compat import bootstrap_cmd
 
 
 def _uses_local_milvus() -> bool:
@@ -87,6 +88,25 @@ def _mark_indexed(corpus: Path, work_dir: Path) -> None:
     _indexed_stamp(work_dir).write_text(_corpus_signature(corpus), encoding="utf-8")
 
 
+def _ensure_database() -> None:
+    # milvus-lite creates its database on demand, but a real server ships with only
+    # "default" -- a fresh container otherwise fails the index run with
+    # "database not found[database=my_db]".
+    if _uses_local_milvus():
+        return
+    client = None
+    try:
+        client = MilvusClient(uri=config.mmore.milvus_uri)
+        if config.mmore.milvus_db not in client.list_databases():
+            client.create_database(config.mmore.milvus_db)
+            print(f"Created Milvus database '{config.mmore.milvus_db}'")
+    except Exception as e:
+        print(f"Warning: could not create '{config.mmore.milvus_db}': {e}")
+    finally:
+        if client is not None:
+            client.close()
+
+
 def _drop_collection_if_exists(name: str) -> None:
     if _uses_local_milvus():
         return
@@ -95,7 +115,7 @@ def _drop_collection_if_exists(name: str) -> None:
         client = MilvusClient(
             uri=config.mmore.milvus_uri, db_name=config.mmore.milvus_db
         )
-        if name in client.list_collections():
+        if name in list(client.list_collections()):  # type: ignore[call-overload]
             client.drop_collection(name)
             print(f"Dropped previous '{name}' collection")
     except Exception as e:
@@ -133,14 +153,7 @@ def _run_index(index_cfg: Path) -> None:
     for attempt in (1, 2, 3):
         try:
             subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "mmore",
-                    "index",
-                    "--config-file",
-                    str(index_cfg),
-                ],
+                bootstrap_cmd("index", "--config-file", str(index_cfg)),
                 check=True,
             )
             return
@@ -246,6 +259,7 @@ def prepare_corpus(corpus: Path) -> Path:
     work_dir = Path(tempfile.gettempdir()) / "ammore" / _corpus_slug(corpus)
     work_dir.mkdir(parents=True, exist_ok=True)
 
+    _ensure_database()
     retriever_cfg = _write_retriever_cfg(work_dir, collection)
     merged = work_dir / "process_out" / "merged" / "merged_results.jsonl"
 
@@ -314,6 +328,7 @@ def _prepare_from_json(json_path: Path) -> Path:
     merged = work_dir / "process_out" / "merged" / "merged_results.jsonl"
     merged.parent.mkdir(parents=True, exist_ok=True)
 
+    _ensure_database()
     retriever_cfg = _write_retriever_cfg(work_dir, collection)
 
     if _is_active(json_path) and _already_indexed(json_path, work_dir, collection):
